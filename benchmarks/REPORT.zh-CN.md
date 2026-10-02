@@ -352,7 +352,7 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 | 校准 | 未做温度校准（`temperature_scale=1.0`），因此只用准确率、不报 ECE / Brier |
 | 失败口径 | 连接失败单独统计并在失败率 >20% 时标记单元格无效；模型拒绝作答记为答错 |
 
-上表的指纹标识的是本仓库当前这棵树。已发布的实测数字早于包名重命名（`app/` → `src/llm2decision/`）与仅改注释的英文化；这两步之后做过等价性核对——v1 提示词模板与三种题型的渲染结果逐字节一致，且用当前代码重跑 JevBench 231（`doubao-2.1-lite`、`doubao-2.1-pro`）与旧实现的产物一致（±2 题，属第 4.4 节记录的贪心解码非确定性）——因此下面的数字仍可归因到这份实现。
+上表的指纹标识的是本仓库当前这棵树。已发布的实测数字早于包名重命名（`app/` → `src/llm2decision/`）与仅改注释的英文化；这两步之后做过等价性核对——v1 提示词模板与三种题型的渲染结果逐字节一致，且用当前代码重跑 JevBench 231（`doubao-2.1-lite`、`doubao-2.1-pro`）与旧实现的产物一致（±2 题，属第 4.4 节记录的贪心解码非确定性）——因此下面的数字仍可归因到这份实现；抽检产物随 Release [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) 发布。
 
 ### 6.3 数据集与子集规则
 
@@ -372,7 +372,7 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 | VitaminC | 599 | `2154d495d6b8d7bd…` |
 | Kev（题级） | 5,768 | `73fd023d385cb87b…` |
 
-**第四节数字主体绑定 `benchmarks/results/matrix-20261002-112301.json`（sha256 `974c543dc6637fe1…`），`deepseek-flash` 行绑定 `benchmarks/results/matrix-20261003-005505.json`（sha256 `ef115979aa40c49c…`）**；4.4 节实验绑定同目录下的 `jevbench-20261002-074113-nobias.summary.json` 与 `jevbench-20261002-074204-withbias.summary.json`。**哈希随每次运行变化**——分数必须与具体哈希绑定，这正是本节存在的意义。
+**第四节数字主体绑定 `benchmarks/results/matrix-20261002-112301.json`（sha256 `974c543dc6637fe1…`），`deepseek-flash` 行绑定 `benchmarks/results/matrix-20261003-005505.json`（sha256 `ef115979aa40c49c…`）**；4.4 节实验绑定同目录下的 `jevbench-20261002-074113-nobias.summary.json` 与 `jevbench-20261002-074204-withbias.summary.json`。这些产物不随仓库提交（体积原因），统一发布于 Release [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002)，下载后可按上列 sha256 校验。**哈希随每次运行变化**——分数必须与具体哈希绑定，这正是本节存在的意义。
 
 ### 6.5 已知不可复核项（如实列出）
 

@@ -352,7 +352,7 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 | Calibration | no temperature calibration (`temperature_scale=1.0`), hence accuracy only, no ECE / Brier |
 | Failure protocol | connection failures counted separately and the cell marked invalid when the failure rate is >20%; a model refusing to answer is recorded as an error |
 
-The fingerprint above identifies this repository's current tree. The published runs predate the package rename (`app/` → `src/llm2decision/`) and the comment-only English pass; after those steps we verified equivalence — the v1 prompt templates and the rendered messages for all three question types are byte-identical, and re-running JevBench 231 with the current code (`doubao-2.1-lite`, `doubao-2.1-pro`) reproduces the old implementation's artifacts (±2 questions, the greedy-decoding non-determinism recorded in section 4.4) — so the numbers below remain attributable to this implementation.
+The fingerprint above identifies this repository's current tree. The published runs predate the package rename (`app/` → `src/llm2decision/`) and the comment-only English pass; after those steps we verified equivalence — the v1 prompt templates and the rendered messages for all three question types are byte-identical, and re-running JevBench 231 with the current code (`doubao-2.1-lite`, `doubao-2.1-pro`) reproduces the old implementation's artifacts (±2 questions, the greedy-decoding non-determinism recorded in section 4.4) — so the numbers below remain attributable to this implementation; the spot-check artifacts are published in the [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) release.
 
 ### 6.3 Datasets and subset rules
 
@@ -372,7 +372,7 @@ The fingerprint above identifies this repository's current tree. The published r
 | VitaminC | 599 | `2154d495d6b8d7bd…` |
 | Kev (per-item) | 5,768 | `73fd023d385cb87b…` |
 
-**The bulk of section 4 is bound to `benchmarks/results/matrix-20261002-112301.json` (sha256 `974c543dc6637fe1…`), and the `deepseek-flash` row to `benchmarks/results/matrix-20261003-005505.json` (sha256 `ef115979aa40c49c…`)**; the section 4.4 experiment is bound to `jevbench-20261002-074113-nobias.summary.json` and `jevbench-20261002-074204-withbias.summary.json` in the same directory. **Hashes change with every run** — scores must be bound to a specific hash, and that is precisely why this section exists.
+**The bulk of section 4 is bound to `benchmarks/results/matrix-20261002-112301.json` (sha256 `974c543dc6637fe1…`), and the `deepseek-flash` row to `benchmarks/results/matrix-20261003-005505.json` (sha256 `ef115979aa40c49c…`)**; the section 4.4 experiment is bound to `jevbench-20261002-074113-nobias.summary.json` and `jevbench-20261002-074204-withbias.summary.json` in the same directory. These artifacts are not committed to the repository (size); they are published in the [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) release, where each download can be checked against the sha256 values recorded above. **Hashes change with every run** — scores must be bound to a specific hash, and that is precisely why this section exists.
 
 ### 6.5 Known non-reproducible items (listed honestly)
 
