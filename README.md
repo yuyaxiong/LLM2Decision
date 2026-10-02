@@ -92,9 +92,7 @@ uvicorn llm2decision.api.main:app --port 8000
 # open http://127.0.0.1:8000/debug for a debug UI
 ```
 
-**You only need one thing to configure: `llm2decision.yaml`,** created by the `cp` above. Every option lives there, and nothing else has to be touched.
-
-Precedence is `route > defaults > environment > built-in default` — environment variables are a **fallback**, they never override a value written in the config file. `.env.example` is **not** a second config you also have to fill in: it is an optional alternative for container/CI setups that would rather inject the key via `LLM2DECISION_API_KEY` than write a file, and those setups can skip `llm2decision.yaml` entirely. Pick one path, not both.
+**You only need one thing to configure: `llm2decision.yaml`,** created by the `cp` above — every option lives there. Precedence: `route > defaults > environment > built-in default`; environment variables are a fallback, never an override. `.env.example` is the *alternative* for container/CI setups that inject `LLM2DECISION_API_KEY` instead of writing a file — pick one path, not both.
 
 ### Providers
 
@@ -110,7 +108,7 @@ Different vendors differ in ways that decide whether this mechanism works at all
 Three things worth knowing before adding a vendor:
 
 1. **`top_logprobs` is not your candidate budget.** Those slots are shared with the EOS token, full-width variants, punctuation, and the words a model reaches for when it wants to start explaining itself (`The`, `Let`, `<|im_end|>`). Measured: 20 slots carry 10 candidates reliably; 5 slots carry 4.
-2. **Thinking models don't work here.** If a model emits a reasoning chain first, position 0 holds reasoning text instead of your answer — and with `max_tokens=1` the chain eats the only token, so `logprobs.content` comes back `null` and the question is unreadable. Some vendors let you disable it, some don't, and vendors document this badly. We measured one model advertised as supporting `logprobs` that returns `null`, and another absent from the docs that works fine. DeepSeek's reasoning-first models (`deepseek-flash`, `deepseek-v4-pro`) *can* be disabled, but only by `thinking: {"type":"disabled"}` — `enable_thinking:false` and `chat_template_kwargs` both fail silently with HTTP 200, which is why DeepSeek has a profile of its own rather than using the generic one.
+2. **Thinking models don't work here unless the chain can be disabled:** with `max_tokens=1` the reasoning eats the only token, so position 0 is empty and `logprobs.content` comes back `null`. Vendors document this badly — we measured one model advertised as supporting `logprobs` that returns `null`, and another absent from the docs that works fine. The exact per-vendor spellings (DeepSeek needs `thinking: {"type":"disabled"}`; other spellings fail silently with HTTP 200) are in [`docs/design.md`](docs/design.md).
 3. **So measure, don't read the docs.** Before pointing this at a new vendor, run the probe:
 
 ```bash
@@ -178,7 +176,7 @@ It answers four things in ~140 calls and stops after 1 if `logprobs` is unsuppor
 | `latency_ms` | end-to-end wall time, **including in-service concurrency queueing** |
 | `calls` | model calls for the whole request |
 
-`latency_ms` minus the sum of a question's `timing` segments is queue/scheduling overhead — the only way to tell "slow model" from "long queue". Measured on this codebase, `prepare_ms + readout_ms` is under 1.5 ms, so **essentially all latency is the upstream round trip**.
+`latency_ms` minus a question's `timing` sum is queue/scheduling overhead — the way to tell "slow model" from "long queue". Measured: `prepare_ms + readout_ms` < 1.5 ms, so **essentially all latency is the upstream round trip**.
 
 ### Errors
 
@@ -206,14 +204,9 @@ state + typed questions
    distribution + label + coverage/reliable
 ```
 
-Four hard constraints fall out of this design, and they are not configurable:
+Four hard constraints fall out of this design, and none are configurable: `temperature = 0` (greedy, so position 0 is deterministic, not a lottery draw); `max_tokens = 1` (one token, then stop — any longer and you're reading the model's own prose); read position 0 only (position *k > 0* is the distribution *after* a written prefix — a different quantity); and single-token handles (a multi-token handle has no `top_logprobs` entry, so the readout misses it — `coverage` drops and `reliable` turns false, without failing the request). Handles are assigned for you (`1`–`9`, then `A`–`K`; labels that are already single `0-9A-Z` characters are used as-is).
 
-- **`temperature = 0`.** Greedy decoding makes the answer position deterministic. With sampling on, "position 0" is a lottery draw, not a distribution.
-- **`max_tokens = 1`.** One token, then stop. Any longer and the model starts explaining, and you're reading a conditional distribution over its own prose.
-- **Read position 0 only.** Position *k > 0* is the distribution *after* the model has written a prefix — a different (and wrong) quantity.
-- **Handles must be single tokens.** A handle that tokenizes into several pieces has no single entry in `top_logprobs`, so its probability can't be read. Handles are assigned for you — `1`–`9` up to nine candidates, letters beyond that (`A`–`K` at the 20-candidate maximum); if all your labels are already single characters in `0-9A-Z`, the labels are used directly instead. A multi-token handle does **not** fail the request: the readout simply misses it (`coverage` drops, `reliable` turns false), and `logit_bias` is abandoned for the whole request rather than biasing some candidates and not others.
-
-An optional extra: with `logit_bias_enabled: true` (needs a provider with an online tokenizer), every candidate handle gets the **same** bias strength. Uniform bias cancels out during renormalization inside the candidate set, so it cannot distort relative probabilities — it only pushes handles into the top-k so the readout stops failing. Measured: this cleared format-failure cases without moving accuracy.
+An optional extra: `logit_bias_enabled: true` (needs an online tokenizer) applies the **same** bias to every handle — uniform bias cancels out during renormalization, so it only pushes handles into the top-k to stop readout failures (measured: fewer failures, accuracy unchanged).
 
 Fuller write-up, including the measured failure modes and why certain things aren't supported: [`docs/design.md`](docs/design.md).
 
@@ -225,7 +218,7 @@ Fuller write-up, including the measured failure modes and why certain things are
 python3 -m llm2decision.calibrate --data labeled.jsonl --cache responses.json --write
 ```
 
-It fits a temperature in log space by minimizing NLL and writes `temperature_scale` into your config. Caveat we hit first-hand: a few dozen samples is not enough — if nearly everything is correct, the fit invents a fake temperature. You need a few hundred examples **including hard ones**, and it warns you when the problem is under-identified.
+It fits a temperature in log space by minimizing NLL and writes `temperature_scale` into your config. Caveat: a few dozen samples is not enough — if nearly everything is correct the fit invents a fake temperature. You need a few hundred examples **including hard ones** (it warns when the problem is under-identified).
 
 ## Benchmarks
 
@@ -241,7 +234,21 @@ It fits a temperature in log space by minimizing NLL and writes `temperature_sca
 ¹ Route name as configured in that run; DeepSeek has since renamed this alias to `deepseek-flash`, and the old numbers are kept as-is.
 ² A full three-group re-run on 2026-10-03 with the current code and config (1,110 calls, 0 failures); the alias carries no version, so it cannot be proven to be the same build as ¹, and its latency comes from a different day's run and is not directly comparable. Artifact binding: see [`benchmarks/REPORT.md`](benchmarks/REPORT.md) section 6.4.
 
-Same-protocol published baselines on JevBench 231: Jev 1.13.0 at 86.58%, Open-Jev-27B at 85.28%.
+### JevBench 231 vs the Jev field
+
+Same-protocol comparison on the public JevBench 231 (per-sample accuracy). Our rows are measured with this codebase; everything else is a published value from that model's own card — hosted/closed and open-weight models side by side, strongest first:
+
+| Model | Where it runs | JevBench 231 | hard 111 |
+|---|---|---:|---:|
+| `doubao-2.1-pro` (this project) | here, measured | **91.2%** | **82.4%** |
+| `doubao-2.1-lite` (this project, default) | here, measured | 89.6% | 79.3% |
+| Jev 1.13.0 | TypeSafe, hosted (closed) | 86.58% | 72.97% |
+| Open-Jev-27B-v1.1 | open weights | 85.28% | 72.07% |
+| Open-Jev 9B | open weights | 77.49% | 59.46% |
+| NeoHorse-Jev-4B | open weights | 75.32%¹ | — |
+| Open-Jev 2B | open weights | 64.94% | 41.44% |
+
+¹ Published value. NeoHorse's card also lists 75.73 as a task-family macro average; 75.32 is its per-sample figure, the one comparable here. Subset rules and metric definitions differ between sources — read [`benchmarks/REPORT.md`](benchmarks/REPORT.md) section 5.3 before quoting these side by side.
 
 Every number is bound to a dataset hash, a subset rule, and a run-artifact hash — see [`benchmarks/REPORT.md`](benchmarks/REPORT.md), and note that the report documents its own gaps (what couldn't be reproduced, and why) rather than filling the blanks.
 
@@ -255,7 +262,7 @@ Datasets are **not** vendored: they're large and should come from upstream under
 ## Tests
 
 ```bash
-pytest        # 90 tests, fully offline, no API key needed
+pytest        # 94 tests, fully offline, no API key needed
 ```
 
 ## Project layout
@@ -268,16 +275,15 @@ src/llm2decision/
   api/        main · debug UI
   calibrate.py
 benchmarks/   benchmark harness, probe scripts, REPORT.md
-tests/        90 offline tests
+tests/        94 offline tests
 ```
 
 ## Status and limitations
 
 - **Not affiliated with TypeSafe AI or their Jev product.** The `/v1/systemone` route exists so existing callers can migrate, and that's the whole of the relationship.
-- Candidate count is capped by the provider (10 on Ark and DeepSeek, 4 on DashScope). Beyond that, split the question — or read section 7.1 of [`docs/design.md`](docs/design.md) for the alternative per-candidate strategy we measured and rejected.
+- Candidate counts are capped (10 on Ark and DeepSeek, 4 on DashScope — see Providers); beyond that, split the question, or read section 7.1 of [`docs/design.md`](docs/design.md) for the per-candidate strategy we measured and rejected.
 - Language: everything here — code, comments, config, and docs — is English. Chinese editions of the main documents ship alongside as `*.zh-CN.md` (`README`, `docs/design`, `docs/when-to-migrate`, `benchmarks/README`, `benchmarks/REPORT`); they are kept in sync by hand.
 - Only text input. No image channel.
-- `openai_compatible` limits are the OpenAI spec, **not measured**. Verify with the probe before trusting them.
 
 ## License
 
