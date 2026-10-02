@@ -4,7 +4,10 @@
 
 **被测对象**：本项目实现的决策服务（火山方舟托管 API，10 个底座路由；另含 2026-10-03 对 `deepseek-flash` 的全量补跑）。
 **评测方式**：`POST /v1/systemone` 等价路径；单次前向、贪心解码（`temperature=0`）、只读生成序列位置 0、候选上限 10、不做温度校准。
-**数据版本**：第四节数字主体绑定 `benchmarks/results/matrix-20261002-112301.json`（sha256 `974c543d…`），共 **28,404 次调用**；`deepseek-flash` 行绑定 `benchmarks/results/matrix-20261003-005505.json`（sha256 `ef115979…`，1,110 次调用）。早期未对齐口径的初测结果已移入[附录 A](#附录-a历史产物已被第四节取代)，正文不再引用。
+**数据版本**：第四节数字绑定两份运行产物，完整哈希与边界见 6.4。
+主体矩阵（10 路由 × 4 组基准，28,404 次调用）：`benchmarks/results/matrix-20261002-112301.json`（sha256 `974c543d…`）。
+`deepseek-flash` 补跑（1,110 次调用）：`benchmarks/results/matrix-20261003-005505.json`（sha256 `ef115979…`）。
+早期未对齐口径的初测结果已移入[附录 A](#附录-a历史产物已被第四节取代)，正文不再引用。
 **准确率口径**：全文均为 **hard-label argmax 准确率**（与业界口径一致），分母是**剔除连接失败后的有效题数**（唯一例外是 4.4 节的 A/B 对照实验，该表分母含失败题，已在表内标注）。
 
 **目录**
@@ -114,7 +117,7 @@ Jev / vLLM 的做法是**停在答案位置做一次前向，直接读分布**�
 
 ## 四、实测结果
 
-数据来源：`benchmarks/results/matrix-20261002-112301.json`（10 路由 × 4 组基准，共 28,404 次调用）；`deepseek-flash`² 行来自 2026-10-03 的补跑（1,110 次调用）。
+数据来源：主体矩阵 `benchmarks/results/matrix-20261002-112301.json`（28,404 次调用），外加 `deepseek-flash`² 行的补跑。产物哈希见 6.4。
 
 ### 4.1 全量矩阵（主结果）
 
@@ -133,7 +136,10 @@ Jev / vLLM 的做法是**停在答案位置做一次前向，直接读分布**�
 | deepseek-v4-flash | 73.5% | 53.1% | 60.4% | 63.4% | — | 919 ms |
 
 ¹ p50 取 JevBench 231 的中位延迟。排序按 JevBench 降序，同分按 hard 降序。Kev 列只在 3 个代表性路由上跑了全部六子集（题量约 5,768/路由）；该列是**六子集等权平均**，与业界 Kev 口径一致；若改用题级 pooled 口径，则 `doubao-2.0-pro` 为 81.2%、`doubao-2.1-lite` 为 80.9%、`deepseek-v4.1-flash` 为 80.3%。
-² `deepseek-flash` 行来自 2026-10-03 的全量补跑（三组基准 231/280/599 无抽样，1,110 次调用，0 失败），产物绑定见 6.4。路由名取自各次运行时的配置：`deepseek-v4.1-flash` 是 10-02 那次运行时的路由名，`deepseek-flash` 是当前配置里的别名；别名不带版本号，无法证明与前者是同一构建，两组数字并列保留、不做合并。该行延迟来自另一日的运行，与同表其他行不可直接比较。
+² `deepseek-flash` 行来自 2026-10-03 的全量补跑（三组基准 231/280/599 无抽样，1,110 次调用，0 失败）；其产物绑定见 6.4。
+路由名取自各次运行时的配置：`deepseek-v4.1-flash` 是 10-02 那次运行时的路由名，`deepseek-flash` 是当前配置里的别名。
+别名不带版本号，无法证明与前者是同一构建——两组数字并列保留、不做合并。
+该行延迟来自另一日的运行，与同表其他行不可直接比较。
 
 **分题型（JevBench 231）**：`choice` 最高 91.4%、`noul` 最高 93.0%、`score` 最高 88.9%；Nimble 的 `score` 子集（54 题）最高 94.4%（`doubao-evolving`）、中位约 87%。
 
@@ -154,6 +160,8 @@ Jev / vLLM 的做法是**停在答案位置做一次前向，直接读分布**�
 | doubao-2.0-mini | 3/231 | 2/111 | 0/280 | 0/599 |
 | deepseek-v4-pro | 0/231 | 0/111 | 0/280 | 0/599 |
 | deepseek-v4-flash | 5/231 | 0/111 | 0/280 | 0/599 |
+
+² `deepseek-flash`——该行背后的那次运行、以及为什么它不与 `deepseek-v4.1-flash` 合并，见 4.1 的脚注 ²。
 
 Kev 六子集的失败数：`doubao-2.0-pro` 5/5,768、`doubao-2.1-lite` 3/5,765、`deepseek-v4.1-flash` 0/5,768。
 
@@ -279,7 +287,7 @@ NeoHorse-Jev-4B 模型卡（TokenRhythm，2026-09-24）给出了六个基准组�
 
 还有一个与文档相悖的实测事实：**百炼的 `logprobs` 支持名单和官方文档是反的**——文档白名单里列的 `qwen-plus-2025-04-28`、`qwen3-32b` 实测返回 `null`；文档没列的 qwen3.5/3.6/3.7/3.8 全系实测都支持（前提是显式关思考）。两个厂商的共同硬前提是：**思考模式与 `logprobs` 互斥**，百炼上不传关思考参数会让 `logprobs` 静默变 `null`（火山是直接 400）。
 
-产物绑定：百炼三模型 `benchmarks/results/probe-aliyun-20261002-174305.json`（sha256 `eec18b67c1411968…`）；火山对照 `benchmarks/results/probe-aliyun-20261002-174832.json`（sha256 `d694d9b872641601…`）。复现命令见 [benchmarks/README.md](README.zh-CN.md)。
+产物绑定：百炼三模型 `benchmarks/results/probe-aliyun-20261002-174305.json`（sha256 `eec18b67c1411968…`）；火山对照 `benchmarks/results/probe-aliyun-20261002-174832.json`（sha256 `d694d9b872641601…`）。复现命令见 [benchmarks/README.zh-CN.md](README.zh-CN.md)。
 
 ### 5.6 备选读出策略（逐候选 yes/no）的实测结论：不采用
 
@@ -352,7 +360,10 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 | 校准 | 未做温度校准（`temperature_scale=1.0`），因此只用准确率、不报 ECE / Brier |
 | 失败口径 | 连接失败单独统计并在失败率 >20% 时标记单元格无效；模型拒绝作答记为答错 |
 
-上表的指纹标识的是本仓库当前这棵树。已发布的实测数字早于包名重命名（`app/` → `src/llm2decision/`）与仅改注释的英文化；这两步之后做过等价性核对——v1 提示词模板与三种题型的渲染结果逐字节一致，且用当前代码重跑 JevBench 231（`doubao-2.1-lite`、`doubao-2.1-pro`）与旧实现的产物一致（±2 题，属第 4.4 节记录的贪心解码非确定性）——因此下面的数字仍可归因到这份实现；抽检产物随 Release [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) 发布。
+上表的指纹标识的是本仓库当前这棵树。
+已发布的实测数字早于包名重命名（`app/` → `src/llm2decision/`）与仅改注释的英文化。
+这两步之后做过等价性核对：v1 提示词模板与三种题型的渲染结果逐字节一致，且用当前代码重跑 JevBench 231（`doubao-2.1-lite`、`doubao-2.1-pro`）能复现旧实现的产物（±2 题，属第 4.4 节记录的贪心解码非确定性）。
+因此下面的数字仍可归因到这份实现；抽检产物随 Release [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) 发布。
 
 ### 6.3 数据集与子集规则
 
@@ -372,7 +383,13 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 | VitaminC | 599 | `2154d495d6b8d7bd…` |
 | Kev（题级） | 5,768 | `73fd023d385cb87b…` |
 
-**第四节数字主体绑定 `benchmarks/results/matrix-20261002-112301.json`（sha256 `974c543dc6637fe1…`），`deepseek-flash` 行绑定 `benchmarks/results/matrix-20261003-005505.json`（sha256 `ef115979aa40c49c…`）**；4.4 节实验绑定同目录下的 `jevbench-20261002-074113-nobias.summary.json` 与 `jevbench-20261002-074204-withbias.summary.json`。这些产物不随仓库提交（体积原因），统一发布于 Release [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002)，下载后可按上列 sha256 校验。**哈希随每次运行变化**——分数必须与具体哈希绑定，这正是本节存在的意义。
+**第四节数字绑定两份运行产物：**
+- 主体矩阵：`benchmarks/results/matrix-20261002-112301.json`（sha256 `974c543dc6637fe1…`）
+- `deepseek-flash` 补跑行：`benchmarks/results/matrix-20261003-005505.json`（sha256 `ef115979aa40c49c…`）
+- 4.4 节实验：同目录下的 `jevbench-20261002-074113-nobias.summary.json` 与 `jevbench-20261002-074204-withbias.summary.json`
+
+这些产物不随仓库提交（体积原因），统一发布于 Release [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002)，下载后可按上列 sha256 校验。
+**哈希随每次运行变化**——分数必须与具体哈希绑定，这正是本节存在的意义。
 
 ### 6.5 已知不可复核项（如实列出）
 

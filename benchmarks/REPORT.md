@@ -4,7 +4,10 @@
 
 **Subject under test**: the decision service implemented in this project (Volcengine Ark-hosted API, 10 base-model routes; plus a full re-run of `deepseek-flash` on 2026-10-03).
 **Evaluation method**: the `POST /v1/systemone` equivalent path; a single forward pass, greedy decoding (`temperature=0`), reading only generation-sequence position 0, candidate cap 10, no temperature calibration.
-**Data version**: the bulk of section 4 is bound to `benchmarks/results/matrix-20261002-112301.json` (sha256 `974c543d…`), totaling **28,404 calls**; the `deepseek-flash` row is bound to `benchmarks/results/matrix-20261003-005505.json` (sha256 `ef115979…`, 1,110 calls). Early initial results that were not protocol-aligned have been moved to [Appendix A](#appendix-a-historical-artifacts-superseded-by-section-4), and the main text no longer cites them.
+**Data version**: section 4 is bound to two run artifacts; full hashes and boundaries are in section 6.4.
+Main matrix (10 routes × 4 benchmark groups, 28,404 calls): `benchmarks/results/matrix-20261002-112301.json` (sha256 `974c543d…`).
+`deepseek-flash` re-run (1,110 calls): `benchmarks/results/matrix-20261003-005505.json` (sha256 `ef115979…`).
+Early initial results that were not protocol-aligned have been moved to [Appendix A](#appendix-a-historical-artifacts-superseded-by-section-4), and the main text no longer cites them.
 **Accuracy protocol**: throughout, all figures are **hard-label argmax accuracy** (consistent with the industry protocol), and the denominator is the **number of valid items after excluding connection failures** (the only exception is the A/B comparison experiment in section 4.4, whose table denominator includes failed items and is annotated as such inside the table).
 
 **Contents**
@@ -114,7 +117,7 @@ Subset protocol (aligned with the industry comparison; rules and hashes in 6.3):
 
 ## 4. Measured results
 
-Data source: `benchmarks/results/matrix-20261002-112301.json` (10 routes × 4 benchmark groups, 28,404 calls); the `deepseek-flash`² row comes from a re-run on 2026-10-03 (1,110 calls).
+Data source: the main matrix `benchmarks/results/matrix-20261002-112301.json` (28,404 calls), plus the `deepseek-flash`² re-run. Artifact hashes are in section 6.4.
 
 ### 4.1 Full matrix (main results)
 
@@ -133,7 +136,10 @@ Data source: `benchmarks/results/matrix-20261002-112301.json` (10 routes × 4 be
 | deepseek-v4-flash | 73.5% | 53.1% | 60.4% | 63.4% | — | 919 ms |
 
 ¹ p50 is the median latency over JevBench 231. Sorted by JevBench descending, ties broken by hard descending. The Kev column was only run for all six subsets on 3 representative routes (about 5,768 items/route); that column is the **equal-weighted average of the six subsets**, consistent with the industry Kev protocol; under a per-item pooled protocol instead, `doubao-2.0-pro` would be 81.2%, `doubao-2.1-lite` 80.9%, and `deepseek-v4.1-flash` 80.3%.
-² The `deepseek-flash` row comes from a full re-run on 2026-10-03 (all 231/280/599 items, no sampling; 1,110 calls, 0 failures); its artifact binding is in section 6.4. Route names follow the config of each run: `deepseek-v4.1-flash` was the route name at the time of the 10-02 run, while `deepseek-flash` is the current alias — it carries no version, so it cannot be proven to be the same build, and the two rows are kept side by side rather than merged. That row's latency comes from a different day's run and is not directly comparable with the others in this table.
+² The `deepseek-flash` row is a full re-run on 2026-10-03 (all 231/280/599 items, no sampling; 1,110 calls, 0 failures); its artifact binding is in section 6.4.
+Route names follow the config of each run: `deepseek-v4.1-flash` was the route name during the 10-02 run, `deepseek-flash` is the current alias.
+The alias carries no version, so it cannot be proven to be the same build — the two rows are kept side by side rather than merged.
+That row's latency comes from a different day's run and is not directly comparable with the others in this table.
 
 **By question type (JevBench 231)**: `choice` peaks at 91.4%, `noul` at 93.0%, `score` at 88.9%; the Nimble `score` subset (54 items) peaks at 94.4% (`doubao-evolving`), with a median around 87%.
 
@@ -154,6 +160,8 @@ Entries are `n_errors/n`; the accuracy denominator is `n - n_errors`. The failur
 | doubao-2.0-mini | 3/231 | 2/111 | 0/280 | 0/599 |
 | deepseek-v4-pro | 0/231 | 0/111 | 0/280 | 0/599 |
 | deepseek-v4-flash | 5/231 | 0/111 | 0/280 | 0/599 |
+
+² `deepseek-flash` — the run behind this row, and why it is not merged with `deepseek-v4.1-flash`, are described in the footnote to section 4.1.
 
 Kev six-subset failure counts: `doubao-2.0-pro` 5/5,768, `doubao-2.1-lite` 3/5,765, `deepseek-v4.1-flash` 0/5,768.
 
@@ -352,7 +360,10 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 | Calibration | no temperature calibration (`temperature_scale=1.0`), hence accuracy only, no ECE / Brier |
 | Failure protocol | connection failures counted separately and the cell marked invalid when the failure rate is >20%; a model refusing to answer is recorded as an error |
 
-The fingerprint above identifies this repository's current tree. The published runs predate the package rename (`app/` → `src/llm2decision/`) and the comment-only English pass; after those steps we verified equivalence — the v1 prompt templates and the rendered messages for all three question types are byte-identical, and re-running JevBench 231 with the current code (`doubao-2.1-lite`, `doubao-2.1-pro`) reproduces the old implementation's artifacts (±2 questions, the greedy-decoding non-determinism recorded in section 4.4) — so the numbers below remain attributable to this implementation; the spot-check artifacts are published in the [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) release.
+The fingerprint above identifies this repository's current tree.
+The published runs predate the package rename (`app/` → `src/llm2decision/`) and the comment-only English pass.
+After those steps we verified equivalence: the v1 prompt templates and the rendered messages for all three question types are byte-identical, and re-running JevBench 231 with the current code (`doubao-2.1-lite`, `doubao-2.1-pro`) reproduces the old implementation's artifacts (±2 questions, the greedy-decoding non-determinism recorded in section 4.4).
+So the numbers below remain attributable to this implementation; the spot-check artifacts are published in the [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) release.
 
 ### 6.3 Datasets and subset rules
 
@@ -372,7 +383,13 @@ The fingerprint above identifies this repository's current tree. The published r
 | VitaminC | 599 | `2154d495d6b8d7bd…` |
 | Kev (per-item) | 5,768 | `73fd023d385cb87b…` |
 
-**The bulk of section 4 is bound to `benchmarks/results/matrix-20261002-112301.json` (sha256 `974c543dc6637fe1…`), and the `deepseek-flash` row to `benchmarks/results/matrix-20261003-005505.json` (sha256 `ef115979aa40c49c…`)**; the section 4.4 experiment is bound to `jevbench-20261002-074113-nobias.summary.json` and `jevbench-20261002-074204-withbias.summary.json` in the same directory. These artifacts are not committed to the repository (size); they are published in the [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) release, where each download can be checked against the sha256 values recorded above. **Hashes change with every run** — scores must be bound to a specific hash, and that is precisely why this section exists.
+**Section 4 is bound to two run artifacts:**
+- Main matrix: `benchmarks/results/matrix-20261002-112301.json` (sha256 `974c543dc6637fe1…`)
+- `deepseek-flash` re-run row: `benchmarks/results/matrix-20261003-005505.json` (sha256 `ef115979aa40c49c…`)
+- The section 4.4 experiment: `jevbench-20261002-074113-nobias.summary.json` and `jevbench-20261002-074204-withbias.summary.json` in the same directory
+
+These artifacts are not committed to the repository (size); they are published in the [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) release, where each download can be checked against the sha256 values above.
+**Hashes change with every run** — scores must be bound to a specific hash, and that is precisely why this section exists.
 
 ### 6.5 Known non-reproducible items (listed honestly)
 
