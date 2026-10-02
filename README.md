@@ -1,0 +1,284 @@
+# LLM2Decision
+
+[English](README.md) | [简体中文](README.zh-CN.md)
+
+**Turn any hosted LLM into a typed decision model.** Give it a state and a few typed questions; get back a probability distribution over *your* options — not generated text.
+
+```python
+# Instead of asking for text and parsing it...
+# "Classify this ticket as billing/technical/other. Reply with one word."
+
+# ...read the probabilities of the options themselves.
+POST /v1/decide
+{"state": "I was charged twice for the same order.",
+ "questions": {"intent": {"type": "choice", "instructions": "Which team should handle this?",
+                          "criteria": {"billing": "Charges, invoices, refunds",
+                                       "technical": "Problems using the product",
+                                       "other": "Neither fits"}}}}
+```
+
+```json
+{"decisions": {"intent": {"label": "billing",
+                          "distribution": {"billing": 0.946, "technical": 0.0476, "other": 0.0064},
+                          "confidence": 0.946, "coverage": 1.0, "reliable": true}},
+ "model": "doubao-seed-2-1-lite-260915", "route": "doubao-2.1-lite",
+ "latency_ms": 1427.24, "calls": 1}
+```
+
+No text is generated, so there is nothing to hallucinate and nothing to parse. The answer is a distribution your code can threshold.
+
+---
+
+## Why this exists
+
+Using a chat LLM for a small, bounded decision is surprisingly indirect:
+
+| The usual way | The problem |
+|---|---|
+| Prompt it to "reply with one word" | It replies with a paragraph anyway; you write a parser and a fallback |
+| Ask it for `"confidence": 0.9` | That is **generated text**, not a probability. It is uncalibrated by construction |
+| Constrain the output with a schema | Guarantees the *shape*, not the *confidence*. Still token generation |
+| Fine-tune a small classifier | Works, but needs labels you probably don't have yet |
+
+This project takes the readout route: stop the prompt at the answer position, let the model produce **exactly one token**, and read the probability it assigned to each of your candidate answers. That is the same signal a classification head would give you, obtained from an API you already have.
+
+**No GPU. No fine-tuning. No vendor lock-in.**
+
+## What you get
+
+- **`choice`** — pick one of your options, with a distribution over all of them
+- **`noul`** — yes/no probability for a statement (`true_probability` in `[0,1]`)
+- **`score`** — position on an ordered scale, with `expected` value for ranking
+- Several questions about the same state in **one request**
+- An honest failure mode: if the readout isn't trustworthy, it **errors** instead of inventing a distribution
+
+**Not sure whether your step qualifies?** [`docs/when-to-migrate.md`](docs/when-to-migrate.md) is the practical companion: which steps are worth converting, templates for each question type, how to wrap generation you *can't* remove in decision guards, an "extractive-first" pattern for rewriting and summarization, and the acceptance bar to hold yourself to.
+
+## Install
+
+```bash
+pip install llm2decision            # once published; for now, from source:
+git clone https://github.com/yuyaxiong/LLM2Decision && cd LLM2Decision
+pip install -e ".[dev]"
+```
+
+Requirements: Python 3.10+, and an API key for any OpenAI-compatible endpoint.
+
+## Configure
+
+Copy the example and fill in your key:
+
+```bash
+cp llm2decision.yaml.example llm2decision.yaml
+```
+
+```yaml
+default_model: doubao-2.1-lite
+
+defaults:
+  provider: ark                                   # ark | dashscope | deepseek | openai_compatible
+  base_url: https://ark.cn-beijing.volces.com/api/v3
+  api_key: "<your-key>"
+
+models:
+  doubao-2.1-lite:
+    model: doubao-seed-2-1-lite-260915
+```
+
+Then start it:
+
+```bash
+uvicorn llm2decision.api.main:app --port 8000
+# open http://127.0.0.1:8000/debug for a debug UI
+```
+
+**You only need one thing to configure: `llm2decision.yaml`,** created by the `cp` above. Every option lives there, and nothing else has to be touched.
+
+Precedence is `route > defaults > environment > built-in default` — environment variables are a **fallback**, they never override a value written in the config file. `.env.example` is **not** a second config you also have to fill in: it is an optional alternative for container/CI setups that would rather inject the key via `LLM2DECISION_API_KEY` than write a file, and those setups can skip `llm2decision.yaml` entirely. Pick one path, not both.
+
+### Providers
+
+Different vendors differ in ways that decide whether this mechanism works at all. All of it lives in one file: [`src/llm2decision/core/providers.py`](src/llm2decision/core/providers.py).
+
+| Provider | `top_logprobs` cap | Candidate cap | Disable thinking | Online tokenizer |
+|---|---:|---:|---|---|
+| `ark` (Volcengine Ark) | 20 | **10** | `thinking: {"type":"disabled"}` | yes |
+| `dashscope` (Alibaba Cloud DashScope) | 5 | **4** | `enable_thinking: false` | no |
+| `deepseek` (DeepSeek) | 20 | **10** | `thinking: {"type":"disabled"}` | no |
+| `openai_compatible` (generic) | 20 | 8 *(unverified)* | — | no |
+
+Three things worth knowing before adding a vendor:
+
+1. **`top_logprobs` is not your candidate budget.** Those slots are shared with the EOS token, full-width variants, punctuation, and the words a model reaches for when it wants to start explaining itself (`The`, `Let`, `<|im_end|>`). Measured: 20 slots carry 10 candidates reliably; 5 slots carry 4.
+2. **Thinking models don't work here.** If a model emits a reasoning chain first, position 0 holds reasoning text instead of your answer — and with `max_tokens=1` the chain eats the only token, so `logprobs.content` comes back `null` and the question is unreadable. Some vendors let you disable it, some don't, and vendors document this badly. We measured one model advertised as supporting `logprobs` that returns `null`, and another absent from the docs that works fine. DeepSeek's reasoning-first models (`deepseek-flash`, `deepseek-v4-pro`) *can* be disabled, but only by `thinking: {"type":"disabled"}` — `enable_thinking:false` and `chat_template_kwargs` both fail silently with HTTP 200, which is why DeepSeek has a profile of its own rather than using the generic one.
+3. **So measure, don't read the docs.** Before pointing this at a new vendor, run the probe:
+
+```bash
+python3 benchmarks/probe_provider.py \
+  --base-url https://openrouter.ai/api/v1 --api-key '<key>' \
+  --thinking-param none --models openai/gpt-4o-mini --limit 60
+```
+
+It answers four things in ~140 calls and stops after 1 if `logprobs` is unsupported: is `logprobs` passed through, is there a way to disable thinking, how many candidates fit, and what accuracy you actually get. **If it reports `logprobs` returned `null`, this mechanism cannot work on that endpoint** — that's a dead end, not a config problem.
+
+## API
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/v1/decide` | Native endpoint |
+| `POST` | `/v1/systemone` | Same body and response, named for [Jev](https://typesafe.ai/) compatibility |
+| `GET` | `/v1/models` | List routes with provider and real model IDs |
+| `GET` | `/health` | Liveness + whether keys are configured |
+| `GET` | `/debug` | Single-page UI: build a request, see probability bars |
+
+### Request
+
+```jsonc
+{
+  "state": "free text or serialized JSON — the context shared by all questions",
+  "questions": {
+    "intent": {
+      "type": "choice",
+      "instructions": "Which team should handle this?",
+      "criteria": { "billing": "Charges, invoices, refunds", "other": "Neither fits" }
+    },
+    "refund_requested": {
+      "type": "noul",
+      "instructions": "The customer explicitly asks for a refund."
+    },
+    "satisfaction": {
+      "type": "score",
+      "instructions": "How satisfied is the customer?",
+      "scale": ["Very unhappy", "Unhappy", "Neutral", "Happy"],
+      "values": [0, 1, 2, 3]        // optional; defaults to each label's own numeric
+                                    // value when it parses as a number, else its index
+    }
+  },
+  "model": "doubao-2.1-lite",       // optional route name; defaults to default_model
+  "debug": false                    // true also returns raw_candidates
+}
+```
+
+`choice` requires `criteria`; `noul` requires non-empty `instructions`; `score` requires `scale` with ≥2 levels.
+
+### Response
+
+| Field | Notes |
+|---|---|
+| `decisions.<name>.label` | argmax of the distribution (`choice` / `score`) |
+| `decisions.<name>.distribution` | renormalized over your candidates only |
+| `decisions.<name>.true_probability` | `noul` only |
+| `decisions.<name>.expected` | `score` only, using `values` |
+| `decisions.<name>.coverage` | share of probability mass that landed on your handles |
+| `decisions.<name>.reliable` | `coverage >= 0.5` — **below this, distrust the distribution** |
+| `decisions.<name>.generated_token` | what the model actually produced at position 0 |
+| `decisions.<name>.calls` | model calls for this question (1 with the current strategy) |
+| `decisions.<name>.timing` | `prepare_ms` / `call_ms` / `readout_ms`, **excluding queue wait** |
+| `decisions.<name>.raw_candidates` | only with `debug: true` |
+| `latency_ms` | end-to-end wall time, **including in-service concurrency queueing** |
+| `calls` | model calls for the whole request |
+
+`latency_ms` minus the sum of a question's `timing` segments is queue/scheduling overhead — the only way to tell "slow model" from "long queue". Measured on this codebase, `prepare_ms + readout_ms` is under 1.5 ms, so **essentially all latency is the upstream round trip**.
+
+### Errors
+
+| Status | Meaning |
+|---|---|
+| `422` | Bad request: candidate count over the provider's cap, unknown route, schema violation |
+| `502` | The readout failed. The detail carries **what the model actually produced** |
+
+`502` is deliberate. If position 0 doesn't hold one of your candidate handles, this service refuses to guess and hands you the raw output instead of a fabricated distribution.
+
+## How it works
+
+```
+state + typed questions
+        │
+        ▼  prompt ends exactly where the answer goes
+   ┌─────────────┐
+   │  LLM API    │   temperature=0 (greedy)  ·  max_tokens=1  ·  logprobs=true
+   └─────────────┘
+        │
+        ▼  read position 0 only
+   candidate handles → logprobs → softmax within candidates
+        │
+        ▼
+   distribution + label + coverage/reliable
+```
+
+Four hard constraints fall out of this design, and they are not configurable:
+
+- **`temperature = 0`.** Greedy decoding makes the answer position deterministic. With sampling on, "position 0" is a lottery draw, not a distribution.
+- **`max_tokens = 1`.** One token, then stop. Any longer and the model starts explaining, and you're reading a conditional distribution over its own prose.
+- **Read position 0 only.** Position *k > 0* is the distribution *after* the model has written a prefix — a different (and wrong) quantity.
+- **Handles must be single tokens.** A handle that tokenizes into several pieces has no single entry in `top_logprobs`, so its probability can't be read. Handles are assigned for you — `1`–`9` up to nine candidates, letters beyond that (`A`–`K` at the 20-candidate maximum); if all your labels are already single characters in `0-9A-Z`, the labels are used directly instead. A multi-token handle does **not** fail the request: the readout simply misses it (`coverage` drops, `reliable` turns false), and `logit_bias` is abandoned for the whole request rather than biasing some candidates and not others.
+
+An optional extra: with `logit_bias_enabled: true` (needs a provider with an online tokenizer), every candidate handle gets the **same** bias strength. Uniform bias cancels out during renormalization inside the candidate set, so it cannot distort relative probabilities — it only pushes handles into the top-k so the readout stops failing. Measured: this cleared format-failure cases without moving accuracy.
+
+Fuller write-up, including the measured failure modes and why certain things aren't supported: [`docs/design.md`](docs/design.md).
+
+## Calibration
+
+`confidence` is the model's probability, **not a calibrated correctness probability**. If you want to threshold on it, calibrate first:
+
+```bash
+python3 -m llm2decision.calibrate --data labeled.jsonl --cache responses.json --write
+```
+
+It fits a temperature in log space by minimizing NLL and writes `temperature_scale` into your config. Caveat we hit first-hand: a few dozen samples is not enough — if nearly everything is correct, the fit invents a fake temperature. You need a few hundred examples **including hard ones**, and it warns you when the problem is under-identified.
+
+## Benchmarks
+
+`benchmarks/` holds the harness, the results, and an honest account of what doesn't reproduce. Highlights: a 10-route × 4-benchmark run (28,404 calls; route names follow that run's config) plus a full three-group re-run of `deepseek-flash` (1,110 calls):
+
+| Route | JevBench 231 | hard 111 | Nimble 280 | VitaminC 599 | p50 |
+|---|---:|---:|---:|---:|---:|
+| `doubao-2.1-pro` | **91.2%** | **82.4%** | 94.2% | 72.9% | 1174 ms |
+| `doubao-2.1-lite` | 89.6% | 79.3% | 89.6% | 72.0% | **870 ms** |
+| `deepseek-v4.1-flash`¹ | 87.0% | 75.7% | 83.2% | **75.5%** | 859 ms |
+| `deepseek-flash`² | 85.7% | 72.1% | 83.2% | 75.1% | 477 ms |
+
+¹ Route name as configured in that run; DeepSeek has since renamed this alias to `deepseek-flash`, and the old numbers are kept as-is.
+² A full three-group re-run on 2026-10-03 with the current code and config (1,110 calls, 0 failures); the alias carries no version, so it cannot be proven to be the same build as ¹, and its latency comes from a different day's run and is not directly comparable. Artifact binding: see [`benchmarks/REPORT.md`](benchmarks/REPORT.md) section 6.4.
+
+Same-protocol published baselines on JevBench 231: Jev 1.13.0 at 86.58%, Open-Jev-27B at 85.28%.
+
+Every number is bound to a dataset hash, a subset rule, and a run-artifact hash — see [`benchmarks/REPORT.md`](benchmarks/REPORT.md), and note that the report documents its own gaps (what couldn't be reproduced, and why) rather than filling the blanks.
+
+```bash
+git clone --depth 1 https://github.com/fstandhartinger/jevbench benchmarks/jevbench
+python3 benchmarks/run_matrix.py --benches jevbench,nimble
+```
+
+Datasets are **not** vendored: they're large and should come from upstream under their own licenses.
+
+## Tests
+
+```bash
+pytest        # 90 tests, fully offline, no API key needed
+```
+
+## Project layout
+
+```
+src/llm2decision/
+  core/       config · schema · providers · readout · labels
+  llm/        client (OpenAI-compatible transport) · service (orchestration)
+  prompts/    versioned templates + loader
+  api/        main · debug UI
+  calibrate.py
+benchmarks/   benchmark harness, probe scripts, REPORT.md
+tests/        90 offline tests
+```
+
+## Status and limitations
+
+- **Not affiliated with TypeSafe AI or their Jev product.** The `/v1/systemone` route exists so existing callers can migrate, and that's the whole of the relationship.
+- Candidate count is capped by the provider (10 on Ark and DeepSeek, 4 on DashScope). Beyond that, split the question — or read section 7.1 of [`docs/design.md`](docs/design.md) for the alternative per-candidate strategy we measured and rejected.
+- Language: everything here — code, comments, config, and docs — is English. Chinese editions of the main documents ship alongside as `*.zh-CN.md` (`README`, `docs/design`, `docs/when-to-migrate`, `benchmarks/README`, `benchmarks/REPORT`); they are kept in sync by hand.
+- Only text input. No image channel.
+- `openai_compatible` limits are the OpenAI spec, **not measured**. Verify with the probe before trusting them.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

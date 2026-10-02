@@ -1,0 +1,12 @@
+[Input]
+{state}
+
+[Task]
+{instructions}
+
+[Levels]
+{levels}
+
+[Output requirement]
+Output only the number of the level you chose (for example {example}). Do not output anything else.
+Answer number (output a single character only, nothing else):

@@ -1,0 +1,9 @@
+[Input]
+{state}
+
+[Statement to judge]
+{instructions}
+
+[Output requirement]
+If the statement holds (yes), output only 1; if it does not hold (no), output only 2. Do not output anything else.
+Answer number (output a single character only, nothing else):

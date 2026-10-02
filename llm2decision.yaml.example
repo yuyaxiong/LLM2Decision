@@ -1,0 +1,108 @@
+# LLM2Decision configuration example — THIS IS THE MAIN CONFIG FILE.
+#
+# Usage: copy this file to llm2decision.yaml and fill in your own key.
+#        You can also use the LLM2DECISION_CONFIG environment variable to point at another path.
+#
+# There is exactly one config to write: llm2decision.yaml. `.env.example` next to this file is an
+# *optional* alternative for container/CI setups that would rather inject the key as an environment
+# variable than put it in a file — you do not need it, and you never need both.
+#
+# Precedence: per-model config > defaults section > environment variables > built-in defaults
+#   — environment variables do not override items already written here; they act only as a
+#   fallback (in container scenarios you may supply environment variables only).
+#
+# Two things that differ from other LLM tooling — read them before changing config:
+#   1. temperature is pinned to 0 and max_tokens to 1, deliberately not exposed as config options:
+#      this mechanism relies on "greedily decode 1 token, then read the logprobs at the answer
+#      position"; relaxing these two would let the answer position drift and make the read fail.
+#   2. top_logprobs determines "how many candidates a single question can have at most". It has to
+#      compete for the same slots with EOS, full-width variants, and punctuation, so the candidate
+#      cap is smaller than top_logprobs: measured 20 → at most 10 candidates.
+#      This vendor's hard caps are built into src/llm2decision/core/providers.py.
+
+# Default route name (a key in the models section). Used when the caller does not pass a model.
+default_model: doubao-2.1-lite
+
+defaults:
+  # provider determines this vendor's hard constraints (slot cap, candidate cap, how thinking is
+  # disabled, whether a tokenizer endpoint exists).
+  # Currently supported: ark (Volcengine Ark), dashscope (Alibaba Cloud DashScope), deepseek.
+  # Defaults to ark if omitted.
+  # Cross-vendor routes must write base_url and api_key explicitly, otherwise they inherit the two
+  # lines below and send requests to the wrong endpoint (this misconfiguration is rejected at startup).
+  provider: ark
+  base_url: https://ark.cn-beijing.volces.com/api/v3
+  api_key: "<your-ark-api-key>"
+  top_logprobs: 20
+  # Temperature calibration coefficient: 1.0 = no calibration. Before using probabilities as
+  # confidence, run calibrate.py.
+  temperature_scale: 1.0
+  max_tokens: 1
+  disable_thinking: true
+  # logit_bias fallback: pushes candidate handles into the top-k, preventing a read failure when
+  # the model does not emit the label.
+  # Only enabled when all candidates are single tokens; requires the vendor to have an online
+  # tokenizer endpoint (DashScope does not).
+  logit_bias_enabled: false
+  logit_bias_strength: 5.0
+  timeout_seconds: 60
+  max_concurrency: 8
+  # Prompt template version; templates live in src/llm2decision/prompts/templates/.
+  # Two versions ship currently, with identical block structure and placeholders:
+  #   v1  Chinese template — the default, and the version all measured numbers in
+  #       benchmarks/REPORT.md are based on
+  #   v2  English template — for English input; switching changes the prompt the model sees,
+  #       so you must re-evaluate after switching, and cannot reuse v1's results directly
+  # Evaluation results are tied to the prompt version; this is why evaluation artifacts must
+  # record the version number.
+  prompt_version: v1
+
+models:
+  # ---------- Volcengine Ark ----------
+  # Gives the most slots (top_logprobs cap 20), so the candidate cap can reach 10
+  doubao-2.1-lite:
+    model: doubao-seed-2-1-lite-260915
+
+  # Strong base model, suited to hard samples, route to it as needed
+  doubao-2.1-pro:
+    model: doubao-seed-2-1-pro-260215
+
+  # ---------- Alibaba Cloud DashScope ----------
+  # Cross-vendor: both base_url and api_key must be written explicitly
+  # DashScope's top_logprobs hard cap is 5, and its slots have to compete with noise, so the candidate cap is only 4
+  qwen-3.7-plus:
+    provider: dashscope
+    model: qwen3.7-plus
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key: "<your-dashscope-api-key>"
+    top_logprobs: 5
+
+  # ---------- DeepSeek ----------
+  # DeepSeek's reasoning-first models (deepseek-flash, deepseek-v4-pro) emit a reasoning chain
+  # first. At max_tokens=1 that chain consumes the only generated token, so without the
+  # disable-thinking param position 0 is empty and logprobs.content comes back null. The deepseek
+  # profile sends thinking: {"type": "disabled"} — measured as the only spelling that works there
+  # (enable_thinking=false and chat_template_kwargs both fail silently with HTTP 200).
+  # cross-vendor: state base_url and api_key explicitly
+  deepseek-flash:
+    provider: deepseek
+    model: deepseek-flash
+    base_url: https://api.deepseek.com
+    api_key: "<your-deepseek-api-key>"
+
+  # ---------- Any OpenAI-compatible endpoint ----------
+  # provider: openai_compatible is the generic fallback profile, meant for vendors without a
+  # dedicated profile (OpenRouter / Qwen / Moonshot / Zhipu / local vLLM…).
+  # Its values follow the OpenAI spec and are **not measured**, so the candidate cap only dares
+  # to be 8 (Ark and DeepSeek both measured up to 10).
+  # Before wiring up a new vendor, run the probe to measure the real caps:
+  #     python3 benchmarks/probe_provider.py \
+  #       --base-url https://openrouter.ai/api/v1 --thinking-param none \
+  #       --models openai/gpt-4o-mini --limit 60
+  # If the probe reports "logprobs returns null", the endpoint does not pass through logprobs and
+  # this mechanism cannot be used there — do not skip this step.
+  openrouter-gpt-4o-mini:
+    provider: openai_compatible
+    model: openai/gpt-4o-mini
+    base_url: https://openrouter.ai/api/v1
+    api_key: "<your-openrouter-api-key>"

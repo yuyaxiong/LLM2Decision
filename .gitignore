@@ -1,0 +1,34 @@
+# Local config and secrets (contains API Key, never commit)
+.env
+.env.local
+llm2decision.yaml
+llm2decision.local.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Test and type-check caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Evaluation: datasets and run artifacts are never committed (large, and separately licensed)
+benchmarks/jevbench/
+benchmarks/nimble/
+benchmarks/kev/
+benchmarks/vitaminc/
+benchmarks/results/
+
+# Editor / system
+.DS_Store
+.idea/
+.vscode/
