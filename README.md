@@ -2,6 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+[![tests](https://github.com/yuyaxiong/LLM2Decision/actions/workflows/test.yml/badge.svg)](https://github.com/yuyaxiong/LLM2Decision/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
 **Turn any hosted LLM into a typed decision model.** Give it a state and a few typed questions; get back a probability distribution over *your* options — not generated text.
 
 ```python
@@ -250,7 +254,7 @@ Same-protocol comparison on the public JevBench 231 (per-sample accuracy). Our r
 
 ¹ Published value. NeoHorse's card also lists 75.73 as a task-family macro average; 75.32 is its per-sample figure, the one comparable here. Subset rules and metric definitions differ between sources — read [`benchmarks/REPORT.md`](benchmarks/REPORT.md) section 5.3 before quoting these side by side.
 
-Every number is bound to a dataset hash, a subset rule, and a run-artifact hash — see [`benchmarks/REPORT.md`](benchmarks/REPORT.md), and note that the report documents its own gaps (what couldn't be reproduced, and why) rather than filling the blanks.
+Every number is bound to a dataset hash, a subset rule, and a run-artifact hash — see [`benchmarks/REPORT.md`](benchmarks/REPORT.md), and note that the report documents its own gaps (what couldn't be reproduced, and why) rather than filling the blanks. The bound run artifacts ship as the [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) release; datasets stay out of the repository and come from upstream.
 
 ```bash
 git clone --depth 1 https://github.com/fstandhartinger/jevbench benchmarks/jevbench

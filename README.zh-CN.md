@@ -2,6 +2,10 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+[![tests](https://github.com/yuyaxiong/LLM2Decision/actions/workflows/test.yml/badge.svg)](https://github.com/yuyaxiong/LLM2Decision/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+
 **把任意托管 LLM 变成类型化决策模型。** 给它一个 state 和几道带类型的问题，拿回来的是**你的**候选项上的概率分布——而不是生成的文本。
 
 ```python
@@ -250,7 +254,7 @@ python3 -m llm2decision.calibrate --data labeled.jsonl --cache responses.json --
 
 ¹ 模型卡公布值。NeoHorse 卡里另有 75.73（按题型 family 的宏平均）；逐样本口径是 75.32，这里只能和它比。各来源的子集规则与指标定义有差异——并列引用前先读 [`benchmarks/REPORT.md`](benchmarks/REPORT.md) 第 5.3 节。
 
-每个数字都绑定了数据集哈希、子集规则和运行产物哈希——见 [`benchmarks/REPORT.md`](benchmarks/REPORT.md)，并请注意，这份报告记录的是它自己的缺口（哪些无法复现、为什么），而不是把空白填上。
+每个数字都绑定了数据集哈希、子集规则和运行产物哈希——见 [`benchmarks/REPORT.md`](benchmarks/REPORT.md)，并请注意，这份报告记录的是它自己的缺口（哪些无法复现、为什么），而不是把空白填上。绑定的运行产物以 Release [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) 发布；数据集不进仓库，从上游获取。
 
 ```bash
 git clone --depth 1 https://github.com/fstandhartinger/jevbench benchmarks/jevbench
