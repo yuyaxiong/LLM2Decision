@@ -80,6 +80,19 @@ def test_raises_on_empty_content() -> None:
         read_distribution([], ["1", "2"], LOOKUP_12)
 
 
+def test_vendor_sentinel_logprobs_are_not_observations() -> None:
+    """Measured on DeepSeek: every token except the emitted one comes back as -9999.
+    A placeholder is not an observation: it must not count toward coverage, and the
+    distribution falls back to the documented floor for the unobserved candidates."""
+    content = [entry("3", 0.0, [("3", 0.0), ("1", -9999.0), ("2", -9999.0), ("4", -9999.0)])]
+    readout = read_distribution(content, ["1", "2", "3", "4"], build_lookup(["1", "2", "3", "4"]), missing_floor=3.0)
+    assert readout.coverage == 0.25
+    assert readout.reliable is False
+    assert readout.logprobs[0] == pytest.approx(-3.0)
+    assert readout.probabilities[2] > 0.8
+    assert [candidate.token for candidate in readout.raw_candidates] == ["3"]
+
+
 def test_raw_candidates_sorted_by_logprob() -> None:
     content = [entry("1", -0.1, [("1", -0.1), ("2", -2.0), ("3", -1.0)])]
     readout = read_distribution(content, ["1", "2"], LOOKUP_12)

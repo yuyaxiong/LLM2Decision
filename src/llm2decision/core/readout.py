@@ -7,6 +7,10 @@ from typing import Dict, List, Sequence
 from .labels import normalize_token
 
 MIN_COVERAGE = 0.5
+# Vendor placeholder that shows up in top_logprobs instead of a real probability
+# (measured: DeepSeek returns -9999 for every token except the emitted one). Treated as
+# "not observed", so it neither counts toward coverage nor enters the distribution.
+SENTINEL_LOGPROB = -1000.0
 
 
 class ReadoutError(RuntimeError):
@@ -85,7 +89,13 @@ def read_distribution(
         key = normalize_token(token)
         if not key:
             continue
-        candidate = RawCandidate(token=token, logprob=float(item.get("logprob", -1e9)))
+        logprob = float(item.get("logprob", -1e9))
+        if logprob <= SENTINEL_LOGPROB:
+            # Some vendors pad top_logprobs with a placeholder instead of a probability
+            # (measured: DeepSeek returns -9999 for every token except the emitted one).
+            # A placeholder is not an observation, so it must not count toward coverage.
+            continue
+        candidate = RawCandidate(token=token, logprob=logprob)
         if key not in table or candidate.logprob > table[key].logprob:
             table[key] = candidate
 
