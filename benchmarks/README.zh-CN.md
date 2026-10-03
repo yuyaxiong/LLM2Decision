@@ -72,10 +72,10 @@ python3 benchmarks/run_vitaminc.py --subset sample300 --n 300
 python3 benchmarks/run_kev.py --route doubao-2.0-pro
 python3 benchmarks/run_kev.py --route doubao-2.0-pro --limit 8   # 每子集抽 8 条
 
-# 全量矩阵（10 路由 × 4 组基准，约 2.8 万次调用）
+# 全量矩阵（8 路由 × 4 组基准，约 2.6 万次调用）
 python3 benchmarks/run_matrix.py
 python3 benchmarks/run_matrix.py --routes doubao-2.1-lite,doubao-2.1-pro --benches jevbench,nimble
-python3 benchmarks/run_matrix.py --kev-routes doubao-2.0-pro,doubao-2.1-lite   # Kev 题量大，默认只跑指定路由
+python3 benchmarks/run_matrix.py --kev-routes doubao-2.0-pro,doubao-2.1-lite,deepseek-flash   # Kev 题量大，默认只跑指定路由
 python3 benchmarks/run_matrix.py --resume benchmarks/results/matrix-<时间戳>.json  # 断点续跑
 
 # 刷新可复核信息（每次评测后都应重跑）

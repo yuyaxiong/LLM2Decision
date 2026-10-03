@@ -224,8 +224,8 @@ Best temperature per question type: score=2.5005
 路由名格式 **`<厂商>-<主版本>-<档位>`**，例如：
 
 - `doubao-2.0-mini` / `doubao-2.1-lite` / `doubao-2.1-pro`
-- `deepseek-v4-flash` / `deepseek-v4.1-flash`
-- 无固定版本号的移动别名例外，按 `<厂商>-<别名>` 命名（`doubao-evolving`）
+- `deepseek-v4-pro`
+- 无固定版本号的移动别名例外，按 `<厂商>-<别名>` 命名（`doubao-evolving`、`deepseek-flash`）
 
 **主版本是模型身份的一部分，必须进路由名**，才能区分未来的 `doubao-3.0-*`；**精确构建日期留在 `model` 字段**（如 `doubao-seed-2-0-mini-260215`）。**换大版本时新增一个路由名并保留旧名**（旧名继续指向旧模型），这样既不打穿调用方，又能灰度对比两版。
 

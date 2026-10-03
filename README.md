@@ -93,8 +93,9 @@ Then start it:
 
 ```bash
 uvicorn llm2decision.api.main:app --port 8000
-# open http://127.0.0.1:8000/debug for a debug UI
 ```
+
+**Debug UI** — open `http://127.0.0.1:8000/debug` in a browser: a single-page console to hand-build `/v1/decide` requests, pick a model route, and inspect the full readout — candidate distribution, raw token/logprobs, timing breakdown. Bilingual: EN / 中文 toggle in the top-right, following your browser language by default.
 
 **You only need one thing to configure: `llm2decision.yaml`,** created by the `cp` above — every option lives there. Precedence: `route > defaults > environment > built-in default`; environment variables are a fallback, never an override. `.env.example` is the *alternative* for container/CI setups that inject `LLM2DECISION_API_KEY` instead of writing a file — pick one path, not both.
 
@@ -226,17 +227,17 @@ It fits a temperature in log space by minimizing NLL and writes `temperature_sca
 
 ## Benchmarks
 
-`benchmarks/` holds the harness, the results, and an honest account of what doesn't reproduce. Highlights: a 10-route × 4-benchmark run (28,404 calls; route names follow that run's config) plus a full three-group re-run of `deepseek-flash` (1,110 calls):
+`benchmarks/` holds the harness, the results, and an honest account of what doesn't reproduce. Highlights: one full run of the currently configured 8 routes × 4 benchmark groups (26,184 calls, 0 failures):
 
-| Route | JevBench 231 | hard 111 | Nimble 280 | VitaminC 599 | p50 |
-|---|---:|---:|---:|---:|---:|
-| `doubao-2.1-pro` | **91.2%** | **82.4%** | 94.2% | 72.9% | 1174 ms |
-| `doubao-2.1-lite` | 89.6% | 79.3% | 89.6% | 72.0% | **870 ms** |
-| `deepseek-v4.1-flash`¹ | 87.0% | 75.7% | 83.2% | **75.5%** | 859 ms |
-| `deepseek-flash`² | 85.7% | 72.1% | 83.2% | 75.1% | 477 ms |
+| Route | JevBench 231 | hard 111 | Nimble 280 | VitaminC 599 | Kev six-subset | p50 |
+|---|---:|---:|---:|---:|---:|---:|
+| `doubao-evolving` | **91.8%** | **83.8%** | **94.6%** | 73.1% | — | 1152 ms |
+| `doubao-2.1-pro` | 90.9% | 82.0% | 94.3% | 73.6% | — | 1110 ms |
+| `doubao-2.1-lite` | 87.9% | 76.6% | 88.2% | 72.5% | 81.8% | 550 ms |
+| `deepseek-flash` | 83.1% | 67.6% | 82.1% | **75.5%** | 80.4% | 421 ms |
+| `doubao-2.0-mini` | 81.8% | 64.0% | 71.4% | 74.8% | — | **355 ms** |
 
-¹ Route name as configured in that run; DeepSeek has since renamed this alias to `deepseek-flash`, and the old numbers are kept as-is.
-² A full three-group re-run on 2026-10-03 with the current code and config (1,110 calls, 0 failures); the alias carries no version, so it cannot be proven to be the same build as ¹, and its latency comes from a different day's run and is not directly comparable. Artifact binding: see [`benchmarks/REPORT.md`](benchmarks/REPORT.md) section 6.4.
+¹ Kev was run on three routes only (`doubao-2.0-pro` 81.80%, `doubao-2.1-lite` 81.77%, `deepseek-flash` 80.40%, six-subset equal-weighted); p50 is the JevBench median. Same-route numbers move by ±2~7 items between runs, so don't compare them cell by cell with earlier editions (the retired route names are listed in the report's Appendix A). Artifact binding: see [`benchmarks/REPORT.md`](benchmarks/REPORT.md) section 6.4.
 
 ### JevBench 231 vs the Jev field
 
@@ -244,8 +245,8 @@ Same-protocol comparison on the public JevBench 231 (per-sample accuracy). Our r
 
 | Model | Where it runs | JevBench 231 | hard 111 |
 |---|---|---:|---:|
-| `doubao-2.1-pro` (this project) | here, measured | **91.2%** | **82.4%** |
-| `doubao-2.1-lite` (this project, default) | here, measured | 89.6% | 79.3% |
+| `doubao-evolving` (this project) | here, measured | **91.8%** | **83.8%** |
+| `doubao-2.1-lite` (this project, example-config default) | here, measured | 87.9% | 76.6% |
 | Jev 1.13.0 | TypeSafe, hosted (closed) | 86.58% | 72.97% |
 | Open-Jev-27B-v1.1 | open weights | 85.28% | 72.07% |
 | Open-Jev 9B | open weights | 77.49% | 59.46% |
@@ -254,7 +255,7 @@ Same-protocol comparison on the public JevBench 231 (per-sample accuracy). Our r
 
 ¹ Published value. NeoHorse's card also lists 75.73 as a task-family macro average; 75.32 is its per-sample figure, the one comparable here. Subset rules and metric definitions differ between sources — read [`benchmarks/REPORT.md`](benchmarks/REPORT.md) section 5.3 before quoting these side by side.
 
-Every number is bound to a dataset hash, a subset rule, and a run-artifact hash — see [`benchmarks/REPORT.md`](benchmarks/REPORT.md), and note that the report documents its own gaps (what couldn't be reproduced, and why) rather than filling the blanks. The bound run artifacts ship as the [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) release; datasets stay out of the repository and come from upstream.
+Every number is bound to a dataset hash, a subset rule, and a run-artifact hash — see [`benchmarks/REPORT.md`](benchmarks/REPORT.md), and note that the report documents its own gaps (what couldn't be reproduced, and why) rather than filling the blanks. The bound run artifacts ship as the [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) release; datasets stay out of the repository and come from upstream.
 
 ```bash
 git clone --depth 1 https://github.com/fstandhartinger/jevbench benchmarks/jevbench

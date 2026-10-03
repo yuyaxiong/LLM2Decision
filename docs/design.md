@@ -227,8 +227,8 @@ The service currently supports only one **global temperature** (`temperature_sca
 Route names take the form **`<vendor>-<major version>-<tier>`**, for example:
 
 - `doubao-2.0-mini` / `doubao-2.1-lite` / `doubao-2.1-pro`
-- `deepseek-v4-flash` / `deepseek-v4.1-flash`
-- Moving aliases without a fixed version number are the exception and are named `<vendor>-<alias>` (`doubao-evolving`)
+- `deepseek-v4-pro`
+- Moving aliases without a fixed version number are the exception and are named `<vendor>-<alias>` (`doubao-evolving`, `deepseek-flash`)
 
 **The major version is part of the model's identity and must go into the route name**, so that future `doubao-3.0-*` can be told apart; **the exact build date stays in the `model` field** (e.g. `doubao-seed-2-0-mini-260215`). **When you change a major version, add a new route name and keep the old one** (the old name keeps pointing at the old model), so you neither break callers nor lose the ability to gray-compare the two versions.
 

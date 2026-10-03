@@ -72,10 +72,10 @@ python3 benchmarks/run_vitaminc.py --subset sample300 --n 300
 python3 benchmarks/run_kev.py --route doubao-2.0-pro
 python3 benchmarks/run_kev.py --route doubao-2.0-pro --limit 8   # sample 8 items per subset
 
-# Full matrix (10 routes × 4 benchmark groups, about 28k calls)
+# Full matrix (8 routes × 4 benchmark groups, about 26k calls)
 python3 benchmarks/run_matrix.py
 python3 benchmarks/run_matrix.py --routes doubao-2.1-lite,doubao-2.1-pro --benches jevbench,nimble
-python3 benchmarks/run_matrix.py --kev-routes doubao-2.0-pro,doubao-2.1-lite   # Kev has a large item count, so by default only the specified routes are run
+python3 benchmarks/run_matrix.py --kev-routes doubao-2.0-pro,doubao-2.1-lite,deepseek-flash   # Kev has a large item count, so by default only the specified routes are run
 python3 benchmarks/run_matrix.py --resume benchmarks/results/matrix-<timestamp>.json  # resume
 
 # Refresh reproducibility info (should be re-run after every evaluation)

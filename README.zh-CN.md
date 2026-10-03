@@ -93,8 +93,9 @@ models:
 
 ```bash
 uvicorn llm2decision.api.main:app --port 8000
-# open http://127.0.0.1:8000/debug for a debug UI
 ```
+
+**调试页** —— 浏览器打开 `http://127.0.0.1:8000/debug`：单页调试控制台，可以手搓 `/v1/decide` 请求、选择模型路由，并查看完整读出细节——候选概率分布、原始 token/logprobs、耗时分解。支持中英文切换（右上角按钮，默认跟随浏览器语言）。
 
 **你只需要配一样东西：`llm2decision.yaml`**，就是上面 `cp` 出来的那份——所有选项都在里面。优先级：`route > defaults > environment > built-in default`，环境变量只是兜底、绝不覆盖配置。`.env.example` 是给容器 / CI 场景的**替代**方案（用 `LLM2DECISION_API_KEY` 注入而不写文件），两条路选一条。
 
@@ -226,17 +227,17 @@ python3 -m llm2decision.calibrate --data labeled.jsonl --cache responses.json --
 
 ## 基准测试
 
-`benchmarks/` 目录里放着测试框架、结果，以及一份关于哪些结果无法复现的诚实说明。亮点：一次 10 条路由 × 4 个基准的运行（28,404 次调用，路由名取自当次配置），外加 `deepseek-flash` 的三组全量补跑（1,110 次调用）：
+`benchmarks/` 目录里放着测试框架、结果，以及一份关于哪些结果无法复现的诚实说明。亮点：一次对当前配置的 8 条路由 × 4 个基准的全量运行（26,184 次调用，0 失败）：
 
-| 路由 | JevBench 231 | hard 111 | Nimble 280 | VitaminC 599 | p50 |
-|---|---:|---:|---:|---:|---:|
-| `doubao-2.1-pro` | **91.2%** | **82.4%** | 94.2% | 72.9% | 1174 ms |
-| `doubao-2.1-lite` | 89.6% | 79.3% | 89.6% | 72.0% | **870 ms** |
-| `deepseek-v4.1-flash`¹ | 87.0% | 75.7% | 83.2% | **75.5%** | 859 ms |
-| `deepseek-flash`² | 85.7% | 72.1% | 83.2% | 75.1% | 477 ms |
+| 路由 | JevBench 231 | hard 111 | Nimble 280 | VitaminC 599 | Kev 六子集 | p50 |
+|---|---:|---:|---:|---:|---:|---:|
+| `doubao-evolving` | **91.8%** | **83.8%** | **94.6%** | 73.1% | — | 1152 ms |
+| `doubao-2.1-pro` | 90.9% | 82.0% | 94.3% | 73.6% | — | 1110 ms |
+| `doubao-2.1-lite` | 87.9% | 76.6% | 88.2% | 72.5% | 81.8% | 550 ms |
+| `deepseek-flash` | 83.1% | 67.6% | 82.1% | **75.5%** | 80.4% | 421 ms |
+| `doubao-2.0-mini` | 81.8% | 64.0% | 71.4% | 74.8% | — | **355 ms** |
 
-¹ 当次运行配置里的路由名；DeepSeek 此后把该别名更名为 `deepseek-flash`，旧数字保留不修正。
-² 2026-10-03 用当前代码与配置做的三组全量补跑（1,110 次调用，0 失败）；别名无版本号，无法证明与 ¹ 是同一构建，延迟也来自另一日运行、不可直接比较。产物绑定见 [`benchmarks/REPORT.md`](benchmarks/REPORT.md) 第 6.4 节。
+¹ Kev 只在三条路由上跑了全部六子集（`doubao-2.0-pro` 81.80%、`doubao-2.1-lite` 81.77%、`deepseek-flash` 80.40%，六子集等权）；p50 取 JevBench 中位延迟。同路由的数字在两次运行间会波动 ±2~7 题，不要与更早版本逐格对比（已下线的路由名见报告附录 A）。产物绑定见 [`benchmarks/REPORT.md`](benchmarks/REPORT.md) 第 6.4 节。
 
 ### JevBench 231 与 Jev 生态对照
 
@@ -244,8 +245,8 @@ python3 -m llm2decision.calibrate --data labeled.jsonl --cache responses.json --
 
 | 模型 | 运行方式 | JevBench 231 | hard 111 |
 |---|---|---:|---:|
-| `doubao-2.1-pro`（本项目） | 本仓库实测 | **91.2%** | **82.4%** |
-| `doubao-2.1-lite`（本项目默认路由） | 本仓库实测 | 89.6% | 79.3% |
+| `doubao-evolving`（本项目） | 本仓库实测 | **91.8%** | **83.8%** |
+| `doubao-2.1-lite`（本项目，示例配置的默认路由） | 本仓库实测 | 87.9% | 76.6% |
 | Jev 1.13.0 | TypeSafe 托管（闭源） | 86.58% | 72.97% |
 | Open-Jev-27B-v1.1 | 开源权重 | 85.28% | 72.07% |
 | Open-Jev 9B | 开源权重 | 77.49% | 59.46% |
@@ -254,7 +255,7 @@ python3 -m llm2decision.calibrate --data labeled.jsonl --cache responses.json --
 
 ¹ 模型卡公布值。NeoHorse 卡里另有 75.73（按题型 family 的宏平均）；逐样本口径是 75.32，这里只能和它比。各来源的子集规则与指标定义有差异——并列引用前先读 [`benchmarks/REPORT.md`](benchmarks/REPORT.md) 第 5.3 节。
 
-每个数字都绑定了数据集哈希、子集规则和运行产物哈希——见 [`benchmarks/REPORT.md`](benchmarks/REPORT.md)，并请注意，这份报告记录的是它自己的缺口（哪些无法复现、为什么），而不是把空白填上。绑定的运行产物以 Release [`eval-20261002`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261002) 发布；数据集不进仓库，从上游获取。
+每个数字都绑定了数据集哈希、子集规则和运行产物哈希——见 [`benchmarks/REPORT.md`](benchmarks/REPORT.md)，并请注意，这份报告记录的是它自己的缺口（哪些无法复现、为什么），而不是把空白填上。绑定的运行产物以 Release [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) 发布；数据集不进仓库，从上游获取。
 
 ```bash
 git clone --depth 1 https://github.com/fstandhartinger/jevbench benchmarks/jevbench
