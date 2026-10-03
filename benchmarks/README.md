@@ -26,6 +26,7 @@ This directory is the **evaluation harness**: it takes the decision service in `
 | [run_vitaminc.py](run_vitaminc.py) | VitaminC fact verification: `nimble599` (599 items, aligned with the industry protocol) / `sample300` (self-sampled 300) | HF `tals/vitaminc` + the `nimble/` manifest |
 | [run_kev.py](run_kev.py) | The six Kev subsets (decision-v7 / transfer-v4 / transfer-v9), per-item scoring | auto-download |
 | [run_matrix.py](run_matrix.py) | **Full matrix**: multiple routes × multiple benchmarks, results written to a single JSON, supports resume | all of the above |
+| [run_intern_suite.py](run_intern_suite.py) | **Intern-Decision same-item comparison**: the seven accuracy suites (including the three JevBench tiers) + the 96-case calibration pilot, written to a single JSON, flushed per suite | `intern-decision/` (manual fetch, see section 2); conversion logic in [intern_decision.py](intern_decision.py) |
 | [probe_yesno.py](probe_yesno.py) | **Alternative readout strategy probe**: verifies whether "independent per-candidate yes/no scoring" is feasible on an arbitrary vendor. **Measured conclusion: not adopted** (see [REPORT 5.6](REPORT.md)) | none (runs JevBench items) |
 | [probe_provider.py](probe_provider.py) | **Cross-vendor compatibility probe**: verifies whether an arbitrary OpenAI-compatible endpoint can carry this mechanism (logprobs readability / thinking-disable syntax / slot capacity / accuracy) | none + needs an API key (can be auto-matched to a route from llm2decision.yaml) |
 | [make_provenance.py](make_provenance.py) | Refreshes `provenance.json`: implementation fingerprint / dataset hashes / item-set hashes / run-artifact hashes | none |
@@ -78,8 +79,13 @@ python3 benchmarks/run_matrix.py --routes doubao-2.1-lite,doubao-2.1-pro --bench
 python3 benchmarks/run_matrix.py --kev-routes doubao-2.0-pro,doubao-2.1-lite,deepseek-flash   # Kev has a large item count, so by default only the specified routes are run
 python3 benchmarks/run_matrix.py --resume benchmarks/results/matrix-<timestamp>.json  # resume
 
-# Refresh reproducibility info (should be re-run after every evaluation)
-python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<timestamp>.json
+# Intern-Decision same-item comparison (seven suites + pilot; 4 routes, about 43k calls, ~2 hours)
+python3 benchmarks/run_intern_suite.py --routes doubao-evolving,doubao-2.1-pro,doubao-2.1-lite,deepseek-flash
+python3 benchmarks/run_intern_suite.py --routes doubao-2.1-lite --suites jevbench,pilot --limit 20   # smoke
+
+# Refresh reproducibility info (re-run after every evaluation; pass both artifact kinds together,
+# provenance.json records all of them)
+python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<timestamp>.json benchmarks/results/intern-<timestamp>-full.json
 ```
 
 **Two inconsistencies in argument conventions** (recorded as-is to avoid pitfalls): `run_kev.py` uses `--route` (required), while the other runners use `--model` (optional, defaulting to `default_model` in `llm2decision.yaml`); `--concurrency` defaults to anything from 6 to 8 depending on the script.
@@ -99,6 +105,24 @@ git clone --depth 1 https://github.com/bespokelabsai/nimble benchmarks/nimble
 # 3) Kev (Apache-2.0) — ensure_data() in run_kev.py auto-fetches to benchmarks/kev/*.jsonl, no manual step
 # 4) VitaminC — the data is not in the repo: run_vitaminc.py pulls tals/vitaminc online via HF datasets
 pip install datasets
+
+# 5) Intern-Decision (repository Apache-2.0; AG News upstream metadata reports an unknown license,
+#    so this project evaluates only and never redistributes)
+#    The three JevBench tiers reuse the same items as 1) (ids verified identical), no extra fetch
+g='repos/InternLM/Intern-Decision/contents/benchmarks'
+mkdir -p benchmarks/intern-decision/accuracy-v1/{agnews,toolace,typed_decisions,wildjailbreak} \
+         benchmarks/intern-decision/calibration-pilot-v1
+for s in agnews toolace typed_decisions wildjailbreak; do
+  gh api -H 'Accept: application/vnd.github.raw' "$g/accuracy-v1/$s/test.jsonl" \
+    > "benchmarks/intern-decision/accuracy-v1/$s/test.jsonl"
+done
+gh api -H 'Accept: application/vnd.github.raw' "$g/accuracy-v1/manifest.json" \
+  > benchmarks/intern-decision/accuracy-v1/manifest.json
+for f in inputs.jsonl references.jsonl manifest.json; do
+  gh api -H 'Accept: application/vnd.github.raw' "$g/known-distribution-pilot-v1/$f" \
+    > "benchmarks/intern-decision/calibration-pilot-v1/$f"
+done
+# Verify with the sha256 values in accuracy-v1/manifest.json; on this machine they were checked and match
 ```
 
 Self-check:
@@ -118,6 +142,7 @@ Everything lands in `results/`:
 | `run_jevbench.py` / `run_nimble.py` / `run_vitaminc.py` | `<bench>-<timestamp>-<tag>.jsonl` + `.summary.json` | per-item records + summary |
 | `run_kev.py` | `kev-<timestamp>-<tag>.json` | six-subset summary + skip statistics |
 | `run_matrix.py` | `matrix-<timestamp>.json` | route × benchmark matrix, flushed once per completed route |
+| `run_intern_suite.py` | `intern-<timestamp>-<tag>.json` | per-record and summary results for the six Intern-Decision suites + pilot, flushed once per completed suite |
 | `probe_yesno.py` | `probe-yesno-<timestamp>.json` | raw evidence for the four hypotheses |
 | `probe_provider.py` | `probe-provider-<timestamp>.json` | raw evidence for the four hypotheses (including per-item top tokens) |
 | `make_provenance.py` | `provenance.json` | machine-readable provenance (fixed filename, overwritten each time) |
@@ -134,6 +159,7 @@ These conventions determine how the numbers are computed; changing them is equiv
 4. **Cells with a failure rate > 20% are marked `valid=false`** and are not included in accuracy conclusions.
 5. **Candidate cap 10**: items with more than 10 candidates are skipped and counted by `run_kev.py` (`skipped_too_many_candidates`). This is also why MASSIVE (18 classes) and BANKING77 (77 classes) cannot be run.
 6. **Subset protocol**: Nimble uses `compat282` (measured 280 items), VitaminC uses `nimble599` (matched 599/599), and Kev counts only items with `_meta.variant == "clean"`. The full rules and hashes are in REPORT.md section 6.
+7. **Intern-Decision's two tables adopt its own protocol**: the seven-suite average is the **arithmetic mean** of the seven accuracies; the pilot uses **expected** multiclass Brier / ECE (against the exact reference distribution, not sampled labels); the hard-tier Brier / ECE are **uncalibrated** raw probabilities (its own three rows are computed after fitted temperatures), so do not read them as calibration conclusions. See REPORT.md 5.7 / 5.8.
 
 ## 5. Adding a new benchmark
 
@@ -150,3 +176,5 @@ These conventions determine how the numbers are computed; changing them is equiv
 | OpenJev text 19 items not reproducible | The upstream harness and prompts are not public, and the `control` and `chess` data sources cannot be found |
 | JevBench scores of open-source models | Require a GPU and the Open-Jev loader and cannot be run on this machine; REPORT.md cites their published values |
 | `probe_yesno.py` does not modify `src/llm2decision/` | It is a feasibility probe and does not participate in service operation; for the conclusions see REPORT.md and docs/design.md |
+| The Intern-Decision pilot covers only 94/96 | The `sum_of_dice/02` canonical/reversed pair has 13 candidates, over the cap of 10, and is rejected with 422 on all four routes (route-independent); our rows in the comparison table therefore have a denominator of 94 |
+| Intern-Decision's AG News license is unknown | Its upstream metadata reports the license as unknown, so this repository only fetches the data, never commits or redistributes it (`benchmarks/intern-decision/` is in `.gitignore`) |

@@ -255,6 +255,22 @@ Same-protocol comparison on the public JevBench 231 (per-sample accuracy). Our r
 
 ¹ Published value. NeoHorse's card also lists 75.73 as a task-family macro average; 75.32 is its per-sample figure, the one comparable here. Subset rules and metric definitions differ between sources — read [`benchmarks/REPORT.md`](benchmarks/REPORT.md) section 5.3 before quoting these side by side.
 
+### Same items, same protocol: the Intern-Decision seven suites
+
+[Intern-Decision](https://github.com/InternLM/Intern-Decision) (InternLM) ships its seven accuracy suites and the 96-case calibration pilot inside the repository, making it the only benchmark family we can compare against on **identical items** — verified **id by id** against its official bundles (id-list hash `04399f09d6b39036…`). The seven-suite average is the arithmetic mean of the seven accuracies:
+
+| Model | Average | hard 111 | typed_decisions | ToolACE | Brier ↓ | ECE ↓ |
+|---|---:|---:|---:|---:|---:|---:|
+| `doubao-evolving` (this project) | **89.85** | **82.88** | 73.45 | 89.35 | **0.2500** | 0.1009 |
+| `doubao-2.1-pro` (this project) | 89.37 | 81.08 | 73.50 | 87.74 | 0.2641 | 0.1054 |
+| `doubao-2.1-lite` (this project) | 87.69 | 77.48 | 73.75 | 83.23 | 0.3086 | 0.1283 |
+| `deepseek-flash` (this project) | 86.81 | 66.67 | 70.65 | 88.06 | 0.5466¹ | 0.2289¹ |
+| Intern-Decision-4B | **90.02** | 73.87 | **80.55** | **96.45** | 0.3468² | 0.0653² |
+| Jev 1.13.0 | 88.74 | 72.07 | 73.35 | 91.29 | 0.3584 | 0.0947 |
+| JevK5 / SemIf / Kev | 85.16 / 84.23 / 79.56 | 73.87 / 61.26 / 45.05 | 64.50 / 62.80 / 65.60 | 80.97 / 85.16 / 87.42 | — | — |
+
+¹ DeepSeek's `top_logprobs` carry only one real value (the rest are -9999 placeholders), so these two cells are a **lower-bound approximation**. ² That model's three rows compute Brier / ECE after **fitted temperatures**, while ours are **uncalibrated** raw probabilities and cannot be read as calibration conclusions — likewise on the pilot our Brier is lower (0.258 vs 0.550) but our ECE is worse (0.309 vs 0.089). The full 12-row table (including Intern-Decision-0.8B/2B and Laya) and every protocol note are in [`benchmarks/REPORT.md`](benchmarks/REPORT.md) 5.7 / 5.8.
+
 Every number is bound to a dataset hash, a subset rule, and a run-artifact hash — see [`benchmarks/REPORT.md`](benchmarks/REPORT.md), and note that the report documents its own gaps (what couldn't be reproduced, and why) rather than filling the blanks. The bound run artifacts ship as the [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) release; datasets stay out of the repository and come from upstream.
 
 ```bash

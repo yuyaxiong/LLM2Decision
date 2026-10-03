@@ -26,6 +26,7 @@
 | [run_vitaminc.py](run_vitaminc.py) | VitaminC 事实核验：`nimble599`（599 条，对齐业界口径）/ `sample300`（自抽 300） | HF `tals/vitaminc` + `nimble/` 的 manifest |
 | [run_kev.py](run_kev.py) | Kev 六子集（decision-v7 / transfer-v4 / transfer-v9），题级计分 | 自动下载 |
 | [run_matrix.py](run_matrix.py) | **全量矩阵**：多路由 × 多基准，结果落一份 JSON，支持断点续跑 | 上述各项 |
+| [run_intern_suite.py](run_intern_suite.py) | **Intern-Decision 同题对照**：七项准确率（含 JevBench 三档）+ 96 条校准 pilot，结果落一份 JSON，逐套件落盘 | `intern-decision/`（手动抓取，见二）；转换逻辑在 [intern_decision.py](intern_decision.py) |
 | [probe_yesno.py](probe_yesno.py) | **备选读出策略探针**：验证「逐候选 yes/no 独立打分」在任意厂商上是否可行。**已实测结论：不采用**（见 [REPORT 5.6](REPORT.md)） | 无（跑 JevBench 题） |
 | [probe_provider.py](probe_provider.py) | **跨厂商兼容性探针**：验证任意 OpenAI 兼容端点能否承载本机制（logprobs 可读性 / 关思考写法 / 槽位容量 / 准确率） | 无 + 需 API Key（可从 llm2decision.yaml 匹配路由自动取） |
 | [make_provenance.py](make_provenance.py) | 刷新 `provenance.json`：实现指纹 / 数据集哈希 / 题集哈希 / 运行产物哈希 | 无 |
@@ -78,8 +79,12 @@ python3 benchmarks/run_matrix.py --routes doubao-2.1-lite,doubao-2.1-pro --bench
 python3 benchmarks/run_matrix.py --kev-routes doubao-2.0-pro,doubao-2.1-lite,deepseek-flash   # Kev 题量大，默认只跑指定路由
 python3 benchmarks/run_matrix.py --resume benchmarks/results/matrix-<时间戳>.json  # 断点续跑
 
-# 刷新可复核信息（每次评测后都应重跑）
-python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<时间戳>.json
+# Intern-Decision 同题对照（七项 + pilot，4 路由约 4.3 万次调用、约 2 小时）
+python3 benchmarks/run_intern_suite.py --routes doubao-evolving,doubao-2.1-pro,doubao-2.1-lite,deepseek-flash
+python3 benchmarks/run_intern_suite.py --routes doubao-2.1-lite --suites jevbench,pilot --limit 20   # 冒烟
+
+# 刷新可复核信息（每次评测后都应重跑；matrix 与 intern 两类产物一起传入，provenance.json 同时记录）
+python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<时间戳>.json benchmarks/results/intern-<时间戳>-full.json
 ```
 
 **参数约定上的两个不一致点**（照现状记录，避免踩坑）：`run_kev.py` 用 `--route`（必填），其余 runner 用 `--model`（可选，缺省走 `llm2decision.yaml` 的 `default_model`）；`--concurrency` 各脚本默认 6~8 不等。
@@ -99,6 +104,23 @@ git clone --depth 1 https://github.com/bespokelabsai/nimble benchmarks/nimble
 # 3) Kev（Apache-2.0）—— run_kev.py 的 ensure_data() 会自动拉到 benchmarks/kev/*.jsonl，无需手动
 # 4) VitaminC —— 数据不在仓库里：run_vitaminc.py 通过 HF datasets 在线拉 tals/vitaminc
 pip install datasets
+
+# 5) Intern-Decision（仓库 Apache-2.0；AG News 的上游 license 标注为 unknown，本项目只评测、不重分发）
+#    JevBench 三档复用 1) 的同一批题（id 逐项一致），无需另抓
+g='repos/InternLM/Intern-Decision/contents/benchmarks'
+mkdir -p benchmarks/intern-decision/accuracy-v1/{agnews,toolace,typed_decisions,wildjailbreak} \
+         benchmarks/intern-decision/calibration-pilot-v1
+for s in agnews toolace typed_decisions wildjailbreak; do
+  gh api -H 'Accept: application/vnd.github.raw' "$g/accuracy-v1/$s/test.jsonl" \
+    > "benchmarks/intern-decision/accuracy-v1/$s/test.jsonl"
+done
+gh api -H 'Accept: application/vnd.github.raw' "$g/accuracy-v1/manifest.json" \
+  > benchmarks/intern-decision/accuracy-v1/manifest.json
+for f in inputs.jsonl references.jsonl manifest.json; do
+  gh api -H 'Accept: application/vnd.github.raw' "$g/known-distribution-pilot-v1/$f" \
+    > "benchmarks/intern-decision/calibration-pilot-v1/$f"
+done
+# 抓完用 accuracy-v1/manifest.json 里的 sha256 校验；这台机器上 sha256 已核对一致
 ```
 
 自检：
@@ -118,6 +140,7 @@ python3 benchmarks/run_matrix.py --limit 5 --kev-routes <任一路由名>   # �
 | `run_jevbench.py` / `run_nimble.py` / `run_vitaminc.py` | `<基准>-<时间戳>-<tag>.jsonl` + `.summary.json` | 逐题记录 + 汇总 |
 | `run_kev.py` | `kev-<时间戳>-<tag>.json` | 六子集汇总 + 跳题统计 |
 | `run_matrix.py` | `matrix-<时间戳>.json` | 路由 × 基准的矩阵，每跑完一个路由落盘一次 |
+| `run_intern_suite.py` | `intern-<时间戳>-<tag>.json` | Intern-Decision 六套件 + pilot 的逐条记录与汇总，每跑完一个套件落盘一次 |
 | `probe_yesno.py` | `probe-yesno-<时间戳>.json` | 四个假设的原始证据 |
 | `probe_provider.py` | `probe-provider-<时间戳>.json` | 四个假设的原始证据（含每题的 top tokens） |
 | `make_provenance.py` | `provenance.json` | 机器可读溯源（固定文件名，每次覆盖） |
@@ -134,6 +157,7 @@ python3 benchmarks/run_matrix.py --limit 5 --kev-routes <任一路由名>   # �
 4. **失败率 > 20% 的单元格标记 `valid=false`**，不计入准确率结论。
 5. **候选上限 10**：超过 10 个候选的题会被 `run_kev.py` 跳过并计数（`skipped_too_many_candidates`）。这也是 MASSIVE（18 类）、BANKING77（77 类）跑不了的原因。
 6. **子集口径**：Nimble 用 `compat282`（实测 280 条）、VitaminC 用 `nimble599`（匹配 599/599）、Kev 只计 `_meta.variant == "clean"` 的题。完整规则与哈希见 REPORT.md 第六节。
+7. **Intern-Decision 的两张表照搬其口径**：七项均值是七项准确率的**算术平均**；pilot 用**期望**多类别 Brier / ECE（对精确参考分布，不是对采样标签）；hard 档的 Brier / ECE 是**未校准**原始概率（对方三行是拟合温度后的值），不要当校准结论。见 REPORT.md 5.7 / 5.8。
 
 ## 五、想加一个新 benchmark
 
@@ -150,3 +174,5 @@ python3 benchmarks/run_matrix.py --limit 5 --kev-routes <任一路由名>   # �
 | OpenJev 文本 19 项不可复现 | 上游 harness 与 prompt 未公开，且 `control`、`chess` 两个数据源找不到 |
 | 开源模型的 JevBench 分数 | 需 GPU 与 Open-Jev loader，本机跑不了，REPORT.md 里引用的是其公布值 |
 | `probe_yesno.py` 不改 `src/llm2decision/` | 它是可行性探针，不参与服务运行；结论见 REPORT.md 与 docs/design.md |
+| Intern-Decision pilot 只覆盖 94/96 | 其中 `sum_of_dice/02` 的正反两题是 13 候选，超出候选上限 10，四条路由上均被 422 拒（与路由无关），对照表里我们那几行分母是 94 |
+| Intern-Decision 的 AG News 许可未明 | 其上游元数据把 license 标为 unknown，因此本仓库只抓取、不提交、不重分发数据（`benchmarks/intern-decision/` 已在 `.gitignore`） |

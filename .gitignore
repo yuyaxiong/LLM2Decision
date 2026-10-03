@@ -32,3 +32,6 @@ benchmarks/results/
 .DS_Store
 .idea/
 .vscode/
+
+# Intern-Decision evaluation bundles (fetch instructions in benchmarks/intern_decision.py)
+benchmarks/intern-decision/

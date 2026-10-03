@@ -6,7 +6,9 @@ run artifacts", instead of being a bare number.
 
 Usage:
     python3 benchmarks/make_provenance.py                     # compute datasets and protocol only
-    python3 benchmarks/make_provenance.py --run <matrix.json>  # also hash a specific run and its item sets
+    python3 benchmarks/make_provenance.py --run <run.json> [<run.json> ...]
+                                                              # also hash the given runs (matrix-* and
+                                                              # intern-*) and their item sets
 
 Output:
     benchmarks/provenance.json   machine-readable
@@ -68,6 +70,24 @@ PROTOCOLS: Dict[str, dict] = {
         "data_files": [f"benchmarks/kev/{name}" for name in KEV_FILES],
         "extra_files": [],
     },
+    "intern_decision": {
+        "source": "https://github.com/InternLM/Intern-Decision benchmarks/accuracy-v1 (repository Apache-2.0; AG News upstream metadata reports an unknown license — no redistribution)",
+        "subset": "the full bundles, no sampling: agnews 7,600 / toolace 310 / typed_decisions 400 records (2,000 decisions) / wildjailbreak 2,210; JevBench is the same public 231 as the jevbench entry (item ids verified identical against the bundle copies)",
+        "protocol": "one request per record (a typed_decisions record yields five decisions); per-decision hard-label argmax; the seven-suite average is the unweighted mean of easy/original/hard/typed_decisions/toolace/agnews/wildjailbreak; the hard tier additionally reports uncalibrated Brier / ECE (not temperature-fitted — both bundles are evaluation-only upstream)",
+        "data_files": [f"benchmarks/intern-decision/accuracy-v1/{suite}/test.jsonl"
+                       for suite in ("agnews", "toolace", "typed_decisions", "wildjailbreak")],
+        "extra_files": ["benchmarks/intern-decision/accuracy-v1/manifest.json"],
+    },
+    "intern_decision_pilot": {
+        "source": "https://github.com/InternLM/Intern-Decision benchmarks/known-distribution-pilot-v1 (96 cases with exact reference distributions)",
+        "subset": "all 96, no sampling",
+        "protocol": "expected Brier / expected ECE against the shipped reference distribution; the accuracy column counts a decision correct when it matches the reference argmax",
+        "data_files": [
+            "benchmarks/intern-decision/calibration-pilot-v1/inputs.jsonl",
+            "benchmarks/intern-decision/calibration-pilot-v1/references.jsonl",
+        ],
+        "extra_files": ["benchmarks/intern-decision/calibration-pilot-v1/manifest.json"],
+    },
 }
 
 # Implementation scope of this run (changes over time and must be recorded alongside the results)
@@ -120,8 +140,34 @@ def dataset_hashes() -> Dict[str, dict]:
 
 def run_hashes(run_path: pathlib.Path) -> dict:
     data = json.loads(run_path.read_text(encoding="utf-8"))
+    base = {
+        "run_file": str(run_path.relative_to(ROOT)),
+        "run_file_sha256": sha256_file(run_path),
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "routes": data.get("routes"),
+    }
+
+    per_route = data.get("per_route")
+    if per_route is not None:  # intern-*.json from run_intern_suite.py
+        evaluated: Dict[str, dict] = {}
+        for block in per_route.values():
+            for bench in data.get("suites", []):
+                records = [r for r in block.get("records", []) if r.get("bench") == bench]
+                if not records:
+                    continue
+                ids = [r["id"] for r in records]
+                evaluated[bench] = {
+                    "n_items": len(ids),
+                    "n_decisions": sum(len(r.get("questions", [])) for r in records),
+                    "ids_sha256": sha256_lines(ids),
+                    "id_source": f"{next(iter(per_route))}|{bench}",
+                }
+            break  # routes share the same item set; one route is enough
+        base.update({"suites": data.get("suites"), "counts": data.get("counts"), "evaluated_sets": evaluated})
+        return base
+
     details = data.get("details", {})
-    evaluated: Dict[str, dict] = {}
+    evaluated = {}
     for bench in data.get("benches", []):
         for route in data.get("routes", []):
             records = details.get(f"{route}|{bench}")
@@ -131,21 +177,18 @@ def run_hashes(run_path: pathlib.Path) -> dict:
             evaluated[bench] = {"n_items": len(ids), "ids_sha256": sha256_lines(ids),
                                 "id_source": f"{route}|{bench}"}
             break
-    return {
-        "run_file": str(run_path.relative_to(ROOT)),
-        "run_file_sha256": sha256_file(run_path),
-        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "routes": data.get("routes"),
+    base.update({
         "kev_routes": data.get("kev_routes"),
         "counts": data.get("counts"),
         "planned_calls": data.get("planned_calls"),
         "evaluated_sets": evaluated,
-    }
+    })
+    return base
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="generate reviewable evaluation provenance")
-    parser.add_argument("--run", help="path to a matrix-*.json from some run")
+    parser.add_argument("--run", nargs="+", help="paths to run artifacts (matrix-*.json, intern-*.json)")
     args = parser.parse_args()
 
     payload = {
@@ -154,13 +197,14 @@ def main() -> int:
         "implementation": code_fingerprint(),
         "benchmarks": dataset_hashes(),
     }
-    run_info = None
-    if args.run:
-        run_path = pathlib.Path(args.run)
+    runs: List[dict] = []
+    for raw in args.run or []:
+        run_path = pathlib.Path(raw)
         if not run_path.is_absolute():
             run_path = ROOT / run_path
-        run_info = run_hashes(run_path)
-        payload["run"] = run_info
+        runs.append(run_hashes(run_path))
+    if runs:
+        payload["runs"] = runs
 
     out_path = BENCH / "provenance.json"
     out_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -169,14 +213,15 @@ def main() -> int:
     print("|---|---|")
     print(f"| Implementation fingerprint (src/llm2decision/ + benchmarks/ sources) | `{payload['implementation']['sha256'][:16]}…` ({len(payload['implementation']['files'])} files) |")
     for bench, info in payload["benchmarks"].items():
-        digest = info["files"].get("", "")
         keys = list(info["files"].items())
         first = keys[0][1] if keys else ""
         print(f"| {bench} dataset hash | `{first[:16]}…` ({len(keys)} files) |")
-    if run_info:
+    for run_info in runs:
         print(f"| run artifact {run_info['run_file']} | `{run_info['run_file_sha256'][:16]}…` |")
         for bench, info in run_info["evaluated_sets"].items():
-            print(f"| {bench} evaluated item set | {info['n_items']} items, id-list hash `{info['ids_sha256'][:16]}…` |")
+            decisions = info.get("n_decisions")
+            suffix = f" ({decisions} decisions)" if decisions and decisions != info["n_items"] else ""
+            print(f"| {bench} evaluated item set | {info['n_items']} items{suffix}, id-list hash `{info['ids_sha256'][:16]}…` |")
     print(f"\nmachine-readable: {out_path.relative_to(ROOT)}")
     return 0
 

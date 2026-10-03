@@ -255,6 +255,22 @@ python3 -m llm2decision.calibrate --data labeled.jsonl --cache responses.json --
 
 ¹ 模型卡公布值。NeoHorse 卡里另有 75.73（按题型 family 的宏平均）；逐样本口径是 75.32，这里只能和它比。各来源的子集规则与指标定义有差异——并列引用前先读 [`benchmarks/REPORT.md`](benchmarks/REPORT.md) 第 5.3 节。
 
+### 与 Intern-Decision 七项基准的同题对照
+
+[Intern-Decision](https://github.com/InternLM/Intern-Decision)（InternLM）把七项准确率测试集和 96 条校准 pilot 一起放在仓库里，因此这是唯一一组能**同题同口径**对照的基准——题目与其官方 bundle **逐 id 一致**（id 列表哈希 `04399f09d6b39036…`）。七项均值是七项准确率的算术平均：
+
+| 模型 | 七项均值 | hard 111 | typed_decisions | ToolACE | Brier ↓ | ECE ↓ |
+|---|---:|---:|---:|---:|---:|---:|
+| `doubao-evolving`（本项目） | **89.85** | **82.88** | 73.45 | 89.35 | **0.2500** | 0.1009 |
+| `doubao-2.1-pro`（本项目） | 89.37 | 81.08 | 73.50 | 87.74 | 0.2641 | 0.1054 |
+| `doubao-2.1-lite`（本项目） | 87.69 | 77.48 | 73.75 | 83.23 | 0.3086 | 0.1283 |
+| `deepseek-flash`（本项目） | 86.81 | 66.67 | 70.65 | 88.06 | 0.5466¹ | 0.2289¹ |
+| Intern-Decision-4B | **90.02** | 73.87 | **80.55** | **96.45** | 0.3468² | 0.0653² |
+| Jev 1.13.0 | 88.74 | 72.07 | 73.35 | 91.29 | 0.3584 | 0.0947 |
+| JevK5 / SemIf / Kev | 85.16 / 84.23 / 79.56 | 73.87 / 61.26 / 45.05 | 64.50 / 62.80 / 65.60 | 80.97 / 85.16 / 87.42 | — | — |
+
+¹ DeepSeek 的 `top_logprobs` 只有 1 个真实值（其余是 -9999 占位符），这两格是**下限近似**。² 对方这三行的 Brier / ECE 用**拟合温度后**的概率，我们是**未校准**原始值，不能当校准结论——同样，pilot 上我们 Brier 更低（0.258 vs 0.550）但 ECE 更差（0.309 vs 0.089）。完整 12 行表（含 Intern-Decision-0.8B/2B、Laya）与全部口径说明见 [`benchmarks/REPORT.md`](benchmarks/REPORT.md) 5.7 / 5.8。
+
 每个数字都绑定了数据集哈希、子集规则和运行产物哈希——见 [`benchmarks/REPORT.md`](benchmarks/REPORT.md)，并请注意，这份报告记录的是它自己的缺口（哪些无法复现、为什么），而不是把空白填上。绑定的运行产物以 Release [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) 发布；数据集不进仓库，从上游获取。
 
 ```bash

@@ -27,13 +27,14 @@ The previous edition of this report (the 10-02 run, including the retired route 
 ## 1. Core conclusions
 
 1. **The approach holds, and under the same protocol it surpasses the industry's best.** Using hosted-API logprobs to replicate the Jev form, `doubao-evolving` reaches **91.8%** on the JevBench public 231 and **83.8%** on the hard tier, with `doubao-2.1-pro` at 90.9% / 82.0% — both above Jev 1.13.0 (86.58% / 72.97%), Open-Jev-27B (85.28% / 72.07%), and all open-weight models (the highest being NeoHorse-Jev-4B at 75.32% per-sample).
-2. **The gap comes from the base model, not the mechanism.** With the same readout logic, `doubao-2.0-mini` scores only 81.8%, while switching to `doubao-2.1-pro` raises it to 90.9% — not a single byte of the mechanism changed.
-3. **The speed/accuracy compromise is `doubao-2.1-lite`**: JevBench 87.9% / Nimble 88.2% / Kev 81.8% at a p50 of 550 ms (about half of the pro tier); for maximum accuracy go to `doubao-evolving` or `doubao-2.1-pro` (91.8% / 90.9%, Nimble 94.6% / 94.3%). `doubao-2.0-mini` (355 ms) is the fastest, but its 81.8% / Nimble 71.4% is only enough for very lightweight scenarios.
-4. **Kev is the only group that has not caught up**: our best is 81.80% (six subsets, equal-weighted, `doubao-2.0-pro`) vs Jev 1.13.0's 85.52, a gap of 3.7 points; the losses concentrate in the two transfer-v9 subsets (75.9~78.8%), while transfer-v4 (81.1~86.9%) is actually a strength.
-5. **A stronger model ≠ a better fit for this mechanism.** Both DeepSeek routes are broadly below same-price doubao: `deepseek-flash` is the highest on VitaminC fact verification (75.5%), but lags clearly on Nimble (82.1%) / Kev (80.4%); `deepseek-v4-pro` is low across all four groups.
-6. **Format compliance can be backstopped**: a uniform-strength `logit_bias` zeroes out the readout failures caused by "the model not emitting a label", without changing the within-candidate probability distribution; enabling it in production is recommended (see 4.4).
-7. **confidence is currently untrustworthy**: no temperature calibration has been done (`temperature_scale=1.0`), so this report uses only argmax accuracy and does not report ECE / Brier. To ship probabilities, first gather labeled data and run temperature calibration.
-8. **Two cells are blank — either unrunnable or irreproducible**: OpenJev text (harness and prompts not public); MASSIVE-en (18 candidate classes exceeds the cap of 10).
+2. **Same items, same protocol: we land in the "90 band" and lead on the hard tier.** On InternLM's [Intern-Decision](https://github.com/InternLM/Intern-Decision) seven-suite benchmark (items **verified identical, id by id**, to its official bundles), `doubao-evolving` averages **89.85** and `doubao-2.1-pro` **89.37** across the seven suites — above Jev's 88.74 and close to Intern-Decision-4B's 90.02; the **hard tier at 82.88% is 9 points above that table's best (73.87%)**. The weak spots are `typed_decisions` and ToolACE — the counterpart is a **specialist fine-tune** trained to turn state into structured decisions (see 5.7).
+3. **The gap comes from the base model, not the mechanism.** With the same readout logic, `doubao-2.0-mini` scores only 81.8%, while switching to `doubao-2.1-pro` raises it to 90.9% — not a single byte of the mechanism changed.
+4. **The speed/accuracy compromise is `doubao-2.1-lite`**: JevBench 87.9% / Nimble 88.2% / Kev 81.8% at a p50 of 550 ms (about half of the pro tier); for maximum accuracy go to `doubao-evolving` or `doubao-2.1-pro` (91.8% / 90.9%, Nimble 94.6% / 94.3%). `doubao-2.0-mini` (355 ms) is the fastest, but its 81.8% / Nimble 71.4% is only enough for very lightweight scenarios.
+5. **Kev is the only group that has not caught up**: our best is 81.80% (six subsets, equal-weighted, `doubao-2.0-pro`) vs Jev 1.13.0's 85.52, a gap of 3.7 points; the losses concentrate in the two transfer-v9 subsets (75.9~78.8%), while transfer-v4 (81.1~86.9%) is actually a strength.
+6. **A stronger model ≠ a better fit for this mechanism.** Both DeepSeek routes are broadly below same-price doubao: `deepseek-flash` is the highest on VitaminC fact verification (75.5%), but lags clearly on Nimble (82.1%) / Kev (80.4%); `deepseek-v4-pro` is low across all four groups.
+7. **Format compliance can be backstopped**: a uniform-strength `logit_bias` zeroes out the readout failures caused by "the model not emitting a label", without changing the within-candidate probability distribution; enabling it in production is recommended (see 4.4).
+8. **confidence is currently untrustworthy**: no temperature calibration has been done (`temperature_scale=1.0`). The Brier / ECE values in 5.7 / 5.8 serve the same-item comparison only: the better Brier comes mostly from higher accuracy, while the ECE (hard 0.101, pilot 0.309) shows the probabilities are over-confident — before shipping probabilities, gather labeled data and run temperature calibration.
+9. **Two cells are blank — either unrunnable or irreproducible**: OpenJev text (harness and prompts not public); MASSIVE-en (18 candidate classes exceeds the cap of 10).
 
 ---
 
@@ -303,6 +304,62 @@ This round also quantified A's shortcoming on DashScope: **80% of items cannot b
 
 Artifact bindings: for Ark, `benchmarks/results/probe-yesno-20261002-164300.json` (sha256 `f66b3cc407d7234a…`); for DashScope, `benchmarks/results/probe-yesno-20261002-182144.json` (sha256 `d1e230829e88e0ff…`). Restart conditions and the full rationale for not adopting it are in [docs/design.md §7.1](../docs/design.md).
 
+### 5.7 Same items, same protocol: the Intern-Decision seven suites (InternLM)
+
+[Intern-Decision](https://github.com/InternLM/Intern-Decision) is an open-source project in the same lane (Qwen3.5-based 4B/2B/0.8B fine-tunes plus a 96-case known-distribution calibration benchmark) that ships **its seven accuracy suites and the calibration pilot inside the repository** — which makes this the report's only **same-item, same-protocol** horizontal comparison, fundamentally different from the published-value citations in 5.1 / 5.2.
+
+**Item alignment was verified first**: the JevBench 231 id list hash matches our main matrix exactly (`04399f09d6b39036…`), the other four suites come straight from its bundles (the sha256 of all four `test.jsonl` files **verified one by one** against its `manifest.json` ✅), and the decision total (12,351) matches its manifest record (10,751 rows / 12,351 decisions) item by item. Scoring protocol: see 6.3.
+
+| Model | Easy | Original | Hard | Typed Decision | ToolACE | AG News | WildJailBreak | Average | Brier ↓ | ECE ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **this implementation · doubao-evolving** | 100.00 | **98.61** | **82.88** | 73.45 | 89.35 | 89.58 | 95.07 | **89.85** | **0.2500** | 0.1009 |
+| **this implementation · doubao-2.1-pro** | 100.00 | **98.61** | 81.08 | 73.50 | 87.74 | 89.55 | 95.11 | 89.37 | 0.2641 | 0.1054 |
+| **this implementation · doubao-2.1-lite** | 100.00 | 97.22 | 77.48 | 73.75 | 83.23 | 87.92 | 94.21 | 87.69 | 0.3086 | 0.1283 |
+| **this implementation · deepseek-flash** | 100.00 | 97.22 | 66.67 | 70.65 | 88.06 | 88.49 | **96.61** | 86.81 | 0.5466² | 0.2289² |
+| Jev (TypeSafe hosted) | 100.00 | 98.61 | 72.07 | 73.35 | 91.29 | 89.57 | 96.29 | 88.74 | 0.3584 | 0.0947 |
+| Intern-Decision-4B (open weights) | 100.00 | 98.61 | 73.87 | **80.55** | **96.45** | 90.82 | 89.86 | **90.02** | 0.3468¹ | 0.0653¹ |
+| Intern-Decision-2B (open weights) | 100.00 | 84.72 | 63.96 | 79.35 | **96.45** | 89.96 | 78.33 | 84.68 | 0.4373¹ | 0.1002¹ |
+| Intern-Decision-0.8B (open weights) | 97.92 | 80.56 | 52.25 | 77.35 | 94.52 | 88.61 | 64.48 | 79.38 | 0.5295¹ | 0.0657¹ |
+| JevK5 | 100.00 | 97.22 | 73.87 | 64.50 | 80.97 | 89.13 | 90.45 | 85.16 | 0.3662 | **0.0467** |
+| SemIf | 100.00 | 98.61 | 61.26 | 62.80 | 85.16 | 89.22 | 92.53 | 84.23 | 0.4980 | 0.1122 |
+| Kev | 100.00 | 93.06 | 45.05 | 65.60 | 87.42 | 89.82 | 75.97 | 79.56 | 0.7383 | 0.2622 |
+| Laya | 95.83 | 72.22 | 28.83 | 35.95 | 63.87 | **92.84** | 14.84 | 57.77 | 0.8042 | 0.2465 |
+
+Average is the **arithmetic mean of the seven accuracy columns**, matching that table's definition; Brier / ECE come from the **111 JevBench-Hard items**, confidence taken as max(P), ECE over 10 equal-width bins — its documented rules adopted as-is. **Bold = this implementation's best value in that column, or the best among published values** (the Easy column has several tied perfect scores and is left unbolded).
+
+**How to read this table:**
+
+- **Average**: `doubao-evolving` 89.85 and `doubao-2.1-pro` 89.37 sit between Jev (88.74) and Intern-Decision-4B (90.02); all four routes beat every other published value (JevK5 85.16, SemIf 84.23, Kev 79.56, Laya 57.77).
+- **The hard tier is the strength**: 82.88 / 81.08, 7~9 points above the published best (73.87); Easy and Original are on par with the best models (100 / 98.61); WildJailBreak is 94.2~96.6, where `deepseek-flash`'s **96.61 is the highest in the whole table**.
+- **The weak spots are `typed_decisions` and ToolACE**: 70.7~73.8 vs ID-4B's 80.55, and 83.2~89.4 vs ID-2B/4B's 96.45. The attribution is clear — Intern-Decision is a specialist fine-tune whose **training objective** is exactly "state → structured decisions", while we are a general-purpose base model with single-token label readout and **no fine-tuning at all**; conversely, that a general model reaches the 90 band on the same items and beats the field by 9 points on the hard tier is the real evidence for the mechanism's transferability.
+- **Read the two distribution columns separately**: Brier is also driven by accuracy (being 9 points up on hard mechanically lowers it), whereas ECE is the pure calibration column — our 0.1009 is close to Jev's 0.0947 but behind ID-4B's calibrated 0.0653.
+
+¹ The three Intern-Decision rows compute Brier / ECE from probabilities **after their individually fitted temperatures** (T = 1.99 / 2.10 / 2.75, the T column in that table); we and every other baseline in this table use **uncalibrated** raw probabilities — so these two columns cannot be read as a calibration comparison.
+
+² DeepSeek returns only one real probability; its remaining `top_logprobs` are placeholders (-9999), which are floored at "lowest observed − 3 nats". Coverage is only 0.17~0.34 (just 38 of the 111 hard items reach the reliability threshold), so these two cells are a **lower-bound approximation**. Its accuracy is unaffected (the argmax still comes from real observations).
+
+### 5.8 Same items, same protocol: the 96-case known-distribution pilot
+
+The upstream pilot ships an **exact reference distribution** for every case and scores expected multiclass Brier / expected ECE (lower is better, matching its `docs/CALIBRATION_BENCHMARK.md`):
+
+| Model | Expected Brier ↓ | Expected ECE ↓ | Cases |
+|---|---:|---:|---:|
+| **this implementation · doubao-evolving** | **0.258** | 0.309 | 94 |
+| **this implementation · doubao-2.1-pro** | 0.262 | 0.308 | 94 |
+| **this implementation · doubao-2.1-lite** | 0.305 | 0.342 | 94 |
+| **this implementation · deepseek-flash** | 0.351² | 0.369² | 94 |
+| Intern-Decision-4B, uncalibrated | 0.628 | 0.213 | 96 |
+| Intern-Decision-4B, calibrated (T=1.99) | 0.550 | **0.089** | 96 |
+| Jev (`jev-1.13.0`) | 0.595 | 0.130 | 96 |
+
+**Our Brier is clearly lower (0.258 vs 0.550 / 0.595) while our ECE is clearly worse (0.309 vs 0.089 / 0.130) — together they say one thing: the probabilities resolve well, but the confidence is far too aggressive.** The most direct evidence is the pilot's first case, a fair die (reference distribution uniform at 1/6 = 0.1667): we assign probability **0.642** to `1`, and after the option order is reversed, **0.973** to `6`. This is not a readout error (the argmax matches the reference) — it is carrying "certainty about the answer" straight over onto a distribution that is known to be uniform.
+
+That is precisely what temperature calibration fixes: the "calibrated" 4B column drops ECE from 0.213 to 0.089, so the payoff on this task is significant. **Until labeled data is gathered and calibration is done, do not treat the probabilities in 5.7 / 5.8 as confidence** (consistent with conclusion 8).
+
+Two protocol notes: ① our case count is **94, not 96** — the `sum_of_dice/02` pair (canonical / reversed) has 13 candidates, over this service's cap of 10, and is rejected on all four routes (the same two cases regardless of route); ② upstream also publishes a six-category breakdown; this round compares the pooled totals only (the category field lives in its `references.jsonl`, and can be split later if needed).
+
+Artifact binding: `benchmarks/results/intern-20261003-125308-full.json` (sha256 `7acb2dbf884846d4…`) — 4 routes × 6 suites, 43,388 calls, 1 h 56 min. **No connection-layer retries** (all 10,847 records per route succeeded on the first attempt); 10 readout failures in total: 8 are the over-cap pilot cases above, and 2 are server-side errors (Ark 500 / request failure) hit once each by `doubao-2.1-pro` on toolace / wildjailbreak, recorded as wrong per the protocol (0.3% / 0.05% of those suites). The item hashes, dataset hashes, and item-set id hashes for this section are recorded in `provenance.json`; reproduction commands are in 6.1.
+
 ---
 
 ## 6. Reproduction and reproducibility
@@ -329,23 +386,29 @@ python3 benchmarks/run_jevbench.py --tag withbias --logit-bias
 python3 benchmarks/run_nimble.py   --model doubao-2.1-lite
 python3 benchmarks/run_vitaminc.py --model doubao-2.1-lite
 
-# 4) Refresh reproducibility info (re-run after every evaluation)
-python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
+# 4) Intern-Decision seven-suite comparison (section 5.7 / 5.8, about 43k calls)
+#    The data is not distributed with this repository; fetch it from upstream per the
+#    DATA_HINT at the top of benchmarks/intern_decision.py
+python3 benchmarks/run_intern_suite.py --routes doubao-evolving,doubao-2.1-pro,doubao-2.1-lite,deepseek-flash
+
+# 5) Refresh reproducibility info (re-run after every evaluation; pass both artifact kinds together,
+#    provenance.json records all of them)
+python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json benchmarks/results/intern-<ts>-full.json
 ```
 
 ### 6.2 Implementation fingerprint
 
 | Item | Value |
 |---|---|
-| Implementation fingerprint (content hashes of the 24 source files under `src/llm2decision/` + `benchmarks/`) | `fc9d89caa3e403e5…` |
+| Implementation fingerprint (content hashes of the 26 source files under `src/llm2decision/` + `benchmarks/`) | `d5efd27f85aed25f…` |
 | Engine | `POST /v1/systemone` (label-logit readout) |
 | Decoding | `temperature=0` (greedy), `max_tokens=1`, **reading only generation-sequence position 0** |
 | Candidate cap | 10 (exceeding it returns 422 and is excluded from evaluation) |
 | Output interface | hard-label argmax; no LLM-as-judge |
-| Calibration | no temperature calibration (`temperature_scale=1.0`), hence accuracy only, no ECE / Brier |
-| Failure protocol | connection failures counted separately and the cell marked invalid when the failure rate is >20%; a model refusing to answer is recorded as an error |
+| Calibration | no temperature calibration (`temperature_scale=1.0`); the Brier / ECE in 5.7 / 5.8 are **uncalibrated raw probabilities** and must not be used as confidence |
+| Failure protocol | connection failures counted separately and the cell marked invalid when the failure rate is >20%; a model refusing to answer is recorded as error |
 
-The fingerprint above identifies this repository's current tree. After this round's run (2026-10-03) there is exactly one code change: the debug page's EN/ZH toggle in `src/llm2decision/api/debug.py` (UI layer, not on the decision path); the decision path, prompt templates, and benchmark harness are identical to what ran, so section 4's numbers are attributable to this implementation. The run artifacts are published in the [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) release.
+The fingerprint above identifies this repository's current tree. Relative to the section 4 run (`matrix-20261003-022427.json`), three changes landed afterwards: ① `src/llm2decision/core/readout.py` gained `SENTINEL_LOGPROB`, treating vendor placeholders (-9999) as "not observed" — this only changes the `coverage` / `reliable` fields and the shape of the floored distribution and **never enters the argmax, so section 4's accuracy numbers are unaffected** (no published number ever depended on coverage); ② the debug page's EN/ZH toggle in `src/llm2decision/api/debug.py` (UI layer); ③ two new benchmark scripts, `benchmarks/intern_decision.py` and `benchmarks/run_intern_suite.py` (used by 5.7 / 5.8). Section 4's numbers therefore remain attributable to the current implementation, and the distribution columns of 5.7 / 5.8 are computed under the new sentinel rule. The run artifacts are published in the [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) release.
 
 ### 6.3 Datasets and subset rules
 
@@ -355,6 +418,8 @@ The fingerprint above identifies this repository's current tree. After this roun
 | Nimble | `data/eval.jsonl` of `bespokelabsai/nimble` | compat282: state ≤384 tokens, request body ≤2048 tokens, candidates ≤26, whole families retained (measured **280** items) | exact per-sample match | `8e9e48b8de520659…` |
 | VitaminC | HF `tals/vitaminc` validation (CC BY-SA 3.0) | nimble599: rows taken exactly by the 599 `unique_id`s in the Nimble manifest (matching 599/599) | 3-way choice argmax | `30bd72d23b3e58ae…` (manifest file) |
 | Kev | the 6 subsets of `jaredpalmer/kev` (Apache-2.0) | full set, only `_meta.variant=="clean"`; items with >10 candidates skipped and counted | per-item argmax, equal-weighted average of the six | `8d5765d7aec4d08c…` (6 files) |
+| Intern-Decision seven suites | `benchmarks/accuracy-v1` of `InternLM/Intern-Decision` (repository Apache-2.0; **AG News upstream metadata reports an unknown license**, and this project does not redistribute the data) | its bundles in full, no sampling: agnews 7,600 / toolace 310 / typed_decisions 400 records (2,000 decisions) / wildjailbreak 2,210; JevBench reuses the same items as the first row of this table (ids verified identical) | one request per record with all its questions (a typed_decisions record yields five decisions); per-decision hard-label argmax; the seven-suite mean is arithmetic; the hard tier also reports uncalibrated Brier / ECE | `4ff1cad1531f29cb…` (5 files; all four `test.jsonl` verified one by one against the upstream manifest ✅) |
+| Intern-Decision calibration pilot | `benchmarks/known-distribution-pilot-v1` of the same repository | all 96 cases (two of them have 13 candidates, over the cap of 10, so 94 are actually covered) | expected multiclass Brier / expected ECE against the exact reference distribution; the accuracy column counts a decision correct when it matches the reference argmax | `54a2c97dffd972aa…` (3 files, consistent with the upstream manifest ✅) |
 
 ### 6.4 Run artifact bindings
 
@@ -364,11 +429,19 @@ The fingerprint above identifies this repository's current tree. After this roun
 | Nimble | 280 | `f0584784646c74f6…` |
 | VitaminC | 599 | `2154d495d6b8d7bd…` |
 | Kev (per-item) | 5,768 | `73fd023d385cb87b…` |
+| Intern-Decision: typed_decisions | 400 records / 2,000 decisions | `7bb7caf4aebac8d0…` |
+| Intern-Decision: toolace | 310 | `a6aae10f092815a4…` |
+| Intern-Decision: agnews | 7,600 | `8e83621e743626bb…` |
+| Intern-Decision: wildjailbreak | 2,210 | `ba4c08831294c81b…` |
+| Intern-Decision: pilot | 96 (94 scored) | `6d79b66cbdb7929b…` |
+
+The JevBench row (231, `04399f09d6b39036…`) comes out **id-for-id identical** in the section 5.7 Intern-Decision run — the machine-checkable proof behind the "same items" claim, and the precondition for putting both runs in one table.
 
 **Section 4 is bound to this round's run artifacts:**
 - Main matrix: `benchmarks/results/matrix-20261003-022427.json` (sha256 `80875133be0562ea…`, 8 routes × 4 benchmark groups, 26,184 calls)
+- Section 5.7 / 5.8 comparison: `benchmarks/results/intern-20261003-125308-full.json` (sha256 `7acb2dbf884846d4…`, 4 routes × 6 suites, 43,388 calls, no connection-layer retries)
 - Section 4.4 experiment (same directory): `jevbench-20261003-093725-nobias.summary.json`, `jevbench-20261003-033600-withbias.summary.json`, `jevbench-20261003-033544-withbias2.summary.json`
-- Machine-readable provenance: `benchmarks/provenance.json` (implementation fingerprint, dataset hashes, item-set id hashes, run-file sha256)
+- Machine-readable provenance: `benchmarks/provenance.json` (implementation fingerprint, dataset hashes, item-set id hashes, and the file sha256 / item-set hashes of **both runs** above)
 
 These artifacts are not committed to the repository (size); they are published in the [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) release, which also collects the section 5.5 / 5.6 cross-vendor probes and the Appendix A historical artifacts, so everything can be verified in one place. Each download can be checked against the sha256 values above.
 
@@ -382,6 +455,8 @@ These artifacts are not committed to the repository (size); they are published i
 | `zhihz/openjev`'s 89.8% / 97.7% | Its evaluation data is not provided with the release package, so only its published values can be cited. Note that it is **isomorphic to this project's mechanism** (reading only the candidate-letter distribution of the next token, without generating text) and is an independent web application rather than model weights |
 | JevBench scores of open-source models | The 27B / 9B weights require a GPU and the Open-Jev loader, which cannot be run on this machine; the table shows their published values |
 | Kev / Nimble / VitaminC scores in the industry table | Come from each model card's published values, cannot be reproduced item by item, and can only be cited after aligning the subset rules |
+| The three Intern-Decision rows and their Brier / ECE | Their weights need a GPU and the XTuner backend, so they cannot be run on this machine and only the published values can be cited; those two columns are also computed after each model's fitted temperature and cannot be reproduced item by item |
+| Intern-Decision's Hard TVD (10 public records) | Not computed this round — the comparison targets its two result tables (seven-suite accuracy, calibration pilot), and TVD is not among them; we report our own Brier / ECE instead |
 
 ---
 

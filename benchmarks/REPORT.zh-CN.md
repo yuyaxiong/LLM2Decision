@@ -27,13 +27,14 @@
 ## 一、核心结论
 
 1. **路线成立，且同口径下超过业界最好水平。** 用托管 API 的 logprobs 复刻 Jev 形态，`doubao-evolving` 在 JevBench 公开 231 上拿到 **91.8%**、hard 档 **83.8%**，`doubao-2.1-pro` 为 90.9% / 82.0%，高于 Jev 1.13.0（86.58% / 72.97%）、Open-Jev-27B（85.28% / 72.07%）与全部开源权重模型（最高 NeoHorse-Jev-4B 逐样本 75.32%）。
-2. **差距来自底座模型，不是机制。** 同一套读出逻辑，`doubao-2.0-mini` 只有 81.8%，换成 `doubao-2.1-pro` 升到 90.9%——机制本身没有改过一个字节。
-3. **速度与准确率的折中是 `doubao-2.1-lite`**：JevBench 87.9% / Nimble 88.2% / Kev 81.8%，p50 550 ms（约为 pro 档的一半）；要最高准确率就上 `doubao-evolving` 或 `doubao-2.1-pro`（91.8% / 90.9%，Nimble 94.6% / 94.3%）。`doubao-2.0-mini`（355 ms）最快，但 81.8% / Nimble 71.4% 只够极轻量场景。
-4. **Kev 是唯一未追平的组**：我们最高 81.80%（六子集等权，`doubao-2.0-pro`）vs Jev 1.13.0 的 85.52，差 3.7 个点；失分集中在 transfer-v9 两个子集（75.9~78.8%），transfer-v4（81.1~86.9%）反而是强项。
-5. **模型强 ≠ 适合本机制。** DeepSeek 两个路由整体低于同价位 doubao：`deepseek-flash` 在 VitaminC 事实核验上最高（75.5%），但 Nimble（82.1%）/ Kev（80.4%）明显落后；`deepseek-v4-pro` 四组全部偏低。
-6. **格式遵从可兜底**：统一强度的 `logit_bias` 把「模型不吐标签」的读出失败清零，且不改变候选内概率分布，建议生产环境开启（见 4.4）。
-7. **confidence 目前不可信**：未做温度校准（`temperature_scale=1.0`），本报告因此只用 argmax 准确率、不报 ECE / Brier。要上线概率，先补标注数据跑温度校准。
-8. **两个格子空着，不是跑不动就是不可复现**：OpenJev 文本（harness 与 prompt 未公开）；MASSIVE-en（18 类候选超出上限 10）。
+2. **同题同口径进入「90 分档」，hard 档领先。** 在 InternLM 的 [Intern-Decision](https://github.com/InternLM/Intern-Decision) 七项基准上（题目与其官方 bundle **逐 id 一致**），`doubao-evolving` 七项均值 **89.85**、`doubao-2.1-pro` **89.37**，高于 Jev 的 88.74、逼近 Intern-Decision-4B 的 90.02；**hard 档 82.88% 比该表最高值 73.87% 高 9 个点**。落后项集中在 `typed_decisions` 与 ToolACE——对方是把状态转结构化决策的**专项微调模型**（见 5.7）。
+3. **差距来自底座模型，不是机制。** 同一套读出逻辑，`doubao-2.0-mini` 只有 81.8%，换成 `doubao-2.1-pro` 升到 90.9%——机制本身没有改过一个字节。
+4. **速度与准确率的折中是 `doubao-2.1-lite`**：JevBench 87.9% / Nimble 88.2% / Kev 81.8%，p50 550 ms（约为 pro 档的一半）；要最高准确率就上 `doubao-evolving` 或 `doubao-2.1-pro`（91.8% / 90.9%，Nimble 94.6% / 94.3%）。`doubao-2.0-mini`（355 ms）最快，但 81.8% / Nimble 71.4% 只够极轻量场景。
+5. **Kev 是唯一未追平的组**：我们最高 81.80%（六子集等权，`doubao-2.0-pro`）vs Jev 1.13.0 的 85.52，差 3.7 个点；失分集中在 transfer-v9 两个子集（75.9~78.8%），transfer-v4（81.1~86.9%）反而是强项。
+6. **模型强 ≠ 适合本机制。** DeepSeek 两个路由整体低于同价位 doubao：`deepseek-flash` 在 VitaminC 事实核验上最高（75.5%），但 Nimble（82.1%）/ Kev（80.4%）明显落后；`deepseek-v4-pro` 四组全部偏低。
+7. **格式遵从可兜底**：统一强度的 `logit_bias` 把「模型不吐标签」的读出失败清零，且不改变候选内概率分布，建议生产环境开启（见 4.4）。
+8. **confidence 目前不可信**：未做温度校准（`temperature_scale=1.0`）。5.7 的 Brier / ECE 只用于「同题对照」：Brier 更好主要来自准确率更高，而 ECE（hard 0.101、pilot 0.309）说明概率偏激进——要上线概率，先补标注数据跑温度校准。
+9. **两个格子空着，不是跑不动就是不可复现**：OpenJev 文本（harness 与 prompt 未公开）；MASSIVE-en（18 类候选超出上限 10）。
 
 ---
 
@@ -303,6 +304,62 @@ NeoHorse-Jev-4B 模型卡（TokenRhythm，2026-09-24）给出了六个基准组�
 
 产物绑定：火山 `benchmarks/results/probe-yesno-20261002-164300.json`（sha256 `f66b3cc407d7234a…`）；百炼 `benchmarks/results/probe-yesno-20261002-182144.json`（sha256 `d1e230829e88e0ff…`）。重启条件与不采用的完整理由见 [docs/design.md §7.1](../docs/design.md)。
 
+### 5.7 同题同口径：Intern-Decision 七项基准对照（InternLM）
+
+[Intern-Decision](https://github.com/InternLM/Intern-Decision) 是同一赛道的开源项目（Qwen3.5 微调的 4B/2B/0.8B 权重 + 96 条已知分布校准基准），它把**七项准确率测试集和校准 pilot 一起放在仓库里**——因此这是本报告唯一一次「同题同口径」的横向比较，与 5.1 / 5.2 的「引用公布值」有本质区别。
+
+**题目对齐是先验证过的**：JevBench 231 的 id 列表哈希与我们主矩阵完全一致（`04399f09d6b39036…`），其余四套件直接使用其 bundle（四个 `test.jsonl` 的 sha256 与上游 `manifest.json` 记录**逐个核对一致** ✅）；决策总数 12,351 与其 manifest 记录（10,751 行 / 12,351 个决策）逐项吻合。评分口径见 6.3。
+
+| 模型 | Easy | Original | Hard | Typed Decision | ToolACE | AG News | WildJailBreak | Average | Brier ↓ | ECE ↓ |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| **本实现 · doubao-evolving** | 100.00 | **98.61** | **82.88** | 73.45 | 89.35 | 89.58 | 95.07 | **89.85** | **0.2500** | 0.1009 |
+| **本实现 · doubao-2.1-pro** | 100.00 | **98.61** | 81.08 | 73.50 | 87.74 | 89.55 | 95.11 | 89.37 | 0.2641 | 0.1054 |
+| **本实现 · doubao-2.1-lite** | 100.00 | 97.22 | 77.48 | 73.75 | 83.23 | 87.92 | 94.21 | 87.69 | 0.3086 | 0.1283 |
+| **本实现 · deepseek-flash** | 100.00 | 97.22 | 66.67 | 70.65 | 88.06 | 88.49 | **96.61** | 86.81 | 0.5466² | 0.2289² |
+| Jev（TypeSafe 托管） | 100.00 | 98.61 | 72.07 | 73.35 | 91.29 | 89.57 | 96.29 | 88.74 | 0.3584 | 0.0947 |
+| Intern-Decision-4B（开源权重） | 100.00 | 98.61 | 73.87 | **80.55** | **96.45** | 90.82 | 89.86 | **90.02** | 0.3468¹ | 0.0653¹ |
+| Intern-Decision-2B（开源权重） | 100.00 | 84.72 | 63.96 | 79.35 | **96.45** | 89.96 | 78.33 | 84.68 | 0.4373¹ | 0.1002¹ |
+| Intern-Decision-0.8B（开源权重） | 97.92 | 80.56 | 52.25 | 77.35 | 94.52 | 88.61 | 64.48 | 79.38 | 0.5295¹ | 0.0657¹ |
+| JevK5 | 100.00 | 97.22 | 73.87 | 64.50 | 80.97 | 89.13 | 90.45 | 85.16 | 0.3662 | **0.0467** |
+| SemIf | 100.00 | 98.61 | 61.26 | 62.80 | 85.16 | 89.22 | 92.53 | 84.23 | 0.4980 | 0.1122 |
+| Kev | 100.00 | 93.06 | 45.05 | 65.60 | 87.42 | 89.82 | 75.97 | 79.56 | 0.7383 | 0.2622 |
+| Laya | 95.83 | 72.22 | 28.83 | 35.95 | 63.87 | **92.84** | 14.84 | 57.77 | 0.8042 | 0.2465 |
+
+均值（Average）为七项准确率的**算术平均**，与该表定义一致；Brier / ECE 取自 **111 条 JevBench-Hard**，置信度取 max(P)，ECE 用 10 等宽区间——全部照搬其文档定义。**加粗 = 本实现在该列的最优值，或公布值中的最优**（Easy 列多家并列满分，不加粗）。
+
+**怎么读这张表：**
+
+- **均值**：`doubao-evolving` 89.85、`doubao-2.1-pro` 89.37，介于 Jev（88.74）与 Intern-Decision-4B（90.02）之间；四条路由均高于其余全部公布值（JevK5 85.16、SemIf 84.23、Kev 79.56、Laya 57.77）。
+- **强项是 hard 档**：82.88 / 81.08，比公布最高值 73.87 高 7~9 个点；Easy 与 Original 与最好的模型同档（100 / 98.61）；WildJailBreak 94.2~96.6，其中 `deepseek-flash` 的 **96.61 是全表最高**。
+- **弱项是 `typed_decisions` 与 ToolACE**：前者 70.7~73.8 vs ID-4B 的 80.55，后者 83.2~89.4 vs ID-2B/4B 的 96.45。归因清楚——Intern-Decision 是把「状态 → 结构化决策」当**训练目标微调**出来的专项模型，我们是通用底座 + 单 token 标签读出、**未做任何微调**；反过来说，通用模型在同题上进入 90 分档、hard 档还反超 9 个点，才是机制可迁移性的证据。
+- **分布列要分开看**：Brier 同时受准确率影响（hard 档高 9 个点会机械地压低 Brier），ECE 才是纯校准列——我们 0.1009 与 Jev 的 0.0947 接近，但不如 ID-4B 校准后的 0.0653。
+
+¹ Intern-Decision 三行的 Brier / ECE 用其**在独立划分上拟合的温度**（T = 1.99 / 2.10 / 2.75，见其表 T 列）之后的概率计算；我们与本表其它基线都是**未校准**的原始概率——这两列因此不能当「校准能力」横比。
+
+² DeepSeek 只返回 1 个真实概率，其余 `top_logprobs` 是占位符（-9999）；占位符按「最低观测值 −3 nats」兜底，coverage 仅 0.17~0.34（hard 111 题里只有 38 题达到 reliable 阈值），这两格是**下限近似**。它的准确率不受影响（argmax 仍取真实观测值）。
+
+### 5.8 同题同口径：96 条已知分布校准 pilot
+
+上游 pilot 给出每条题的**精确参考分布**，用期望多类别 Brier / 期望 ECE 评分（越低越好，口径与其 `docs/CALIBRATION_BENCHMARK.md` 一致）：
+
+| 模型 | 期望 Brier ↓ | 期望 ECE ↓ | 样本 |
+|---|---:|---:|---:|
+| **本实现 · doubao-evolving** | **0.258** | 0.309 | 94 |
+| **本实现 · doubao-2.1-pro** | 0.262 | 0.308 | 94 |
+| **本实现 · doubao-2.1-lite** | 0.305 | 0.342 | 94 |
+| **本实现 · deepseek-flash** | 0.351² | 0.369² | 94 |
+| Intern-Decision-4B，未校准 | 0.628 | 0.213 | 96 |
+| Intern-Decision-4B，已校准（T=1.99） | 0.550 | **0.089** | 96 |
+| Jev（`jev-1.13.0`） | 0.595 | 0.130 | 96 |
+
+**Brier 我们明显更低（0.258 vs 0.550 / 0.595），ECE 明显更差（0.309 vs 0.089 / 0.130）——两者合起来说明同一件事：概率的分辨力够，但置信度过于激进。** 最直接的例证是 pilot 首题「公正骰子」（参考分布为均匀 1/6 = 0.1667）：我们给出 `1` 的概率 **0.642**、其选项顺序反转后给出 `6` 的概率 **0.973**。这不是读出错误（argmax 与参考一致），而是把「确定答案」的自信直接搬到了「已知均匀」的分布上。
+
+这也正是温度校准要解决的问题：4B 的「已校准」列把 ECE 从 0.213 压到 0.089，说明该任务上校准收益显著。**在补标注数据完成校准之前，5.7 / 5.8 的概率不要当置信度用**（与结论 8 一致）。
+
+两条口径说明：① 我们的样本是 **94 而非 96**——pilot 中 `sum_of_dice/02` 的正反两个变体是 13 候选，超出本服务候选上限 10，四条路由上均被拒（同一对题，与路由无关）；② 上游还给出六个类别的明细，本轮只做总体对照（类别字段在其 `references.jsonl` 的 `category` 里，需要时可拆）。
+
+产物绑定：`benchmarks/results/intern-20261003-125308-full.json`（sha256 `7acb2dbf884846d4…`）——4 路由 × 6 套件、43,388 次调用、1 小时 56 分。**无连接层重试**（10,847 条/路由全部一次成功），读出失败共 10 例：8 例是上述 pilot 超限题，另 2 例是 `doubao-2.1-pro` 在 toolace / wildjailbreak 各遇到一次服务端错误（Ark 500 / 请求失败，按口径记为答错，各占该套件 0.3% / 0.05%）。本节的题目哈希、数据哈希与题集 id 哈希均记录在 `provenance.json`，复现命令见 6.1。
+
 ---
 
 ## 六、复现与可复核性
@@ -329,23 +386,27 @@ python3 benchmarks/run_jevbench.py --tag withbias --logit-bias
 python3 benchmarks/run_nimble.py   --model doubao-2.1-lite
 python3 benchmarks/run_vitaminc.py --model doubao-2.1-lite
 
-# 4) 刷新可复核信息（每次评测后重跑）
-python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
+# 4) Intern-Decision 七项对照（5.7 / 5.8 节，约 4.3 万次调用）
+#    数据不随仓库分发，按 benchmarks/intern_decision.py 顶部 DATA_HINT 从上游抓取
+python3 benchmarks/run_intern_suite.py --routes doubao-evolving,doubao-2.1-pro,doubao-2.1-lite,deepseek-flash
+
+# 5) 刷新可复核信息（每次评测后重跑；matrix 与 intern 两类产物一起传入，provenance.json 会同时记录）
+python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json benchmarks/results/intern-<ts>-full.json
 ```
 
 ### 6.2 实现指纹
 
 | 项 | 值 |
 |---|---|
-| 实现指纹（`src/llm2decision/` + `benchmarks/` 源码，24 个文件内容哈希） | `fc9d89caa3e403e5…` |
+| 实现指纹（`src/llm2decision/` + `benchmarks/` 源码，26 个文件内容哈希） | `d5efd27f85aed25f…` |
 | 引擎 | `POST /v1/systemone`（label-logit readout） |
 | 解码 | `temperature=0`（贪心）、`max_tokens=1`、**只读生成序列位置 0** |
 | 候选上限 | 10（超出直接 422，不参与评测） |
 | 输出切口 | hard-label argmax；无 LLM-as-judge |
-| 校准 | 未做温度校准（`temperature_scale=1.0`），因此只用准确率、不报 ECE / Brier |
+| 校准 | 未做温度校准（`temperature_scale=1.0`）；5.7 / 5.8 的 Brier / ECE 是**未校准的原始概率**，不得当置信度使用 |
 | 失败口径 | 连接失败单独统计并在失败率 >20% 时标记单元格无效；模型拒绝作答记为答错 |
 
-上表的指纹标识的是本仓库当前这棵树。本轮运行（2026-10-03）之后，代码只有一处改动：`src/llm2decision/api/debug.py` 的调试页中英文切换（UI 层，不在决策链路上）；决策路径、prompt 模板与基准 harness 与运行时一致，因此第四节数字可归因到当前实现。运行产物随 Release [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) 发布。
+上表的指纹标识的是本仓库当前这棵树。相对第四节那次运行（`matrix-20261003-022427.json`），本轮之后代码有三处变化：① `src/llm2decision/core/readout.py` 新增 `SENTINEL_LOGPROB`，把厂商占位符（-9999）判为「未观测」——它只改变 `coverage` / `reliable` 两个字段与兜底后的分布形状，**不进入 argmax，因此第四节的准确率数字不受影响**（既有报告也从未发布过依赖 coverage 的数值）；② `src/llm2decision/api/debug.py` 的调试页中英文切换（UI 层）；③ 新增两个基准脚本 `benchmarks/intern_decision.py`、`benchmarks/run_intern_suite.py`（5.7 / 5.8 用）。第四节的数字因此仍可归因到当前实现，5.7 / 5.8 的分布列按新的哨兵规则计算。运行产物随 Release [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) 发布。
 
 ### 6.3 数据集与子集规则
 
@@ -355,6 +416,8 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 | Nimble | `bespokelabsai/nimble` 的 `data/eval.jsonl` | compat282：state ≤384 tokens、请求体 ≤2048 tokens、候选 ≤26、整族保留（实测 **280** 条） | 逐样本完全匹配 | `8e9e48b8de520659…` |
 | VitaminC | HF `tals/vitaminc` validation（CC BY-SA 3.0） | nimble599：按 Nimble manifest 的 599 个 `unique_id` 精确取行（匹配 599/599） | 3 路 choice argmax | `30bd72d23b3e58ae…`（manifest 文件） |
 | Kev | `jaredpalmer/kev`（Apache-2.0）6 个子集 | 全量，仅 `_meta.variant=="clean"`；候选 >10 的题跳过并计数 | 题级 argmax，六项等权平均 | `8d5765d7aec4d08c…`（6 个文件） |
+| Intern-Decision 七项 | `InternLM/Intern-Decision` 的 `benchmarks/accuracy-v1`（仓库 Apache-2.0；**AG News 的上游 license 标注为 unknown**，本项目不重分发数据） | 其 bundle 全量不抽样：agnews 7,600 / toolace 310 / typed_decisions 400 条（2,000 决策）/ wildjailbreak 2,210；JevBench 用本表首行同一批题（id 逐项一致） | 一行多问 = 一次请求（typed_decisions 一行产 5 个决策）；逐决策 hard-label argmax；七项为算术平均；hard 档另报未校准 Brier / ECE | `4ff1cad1531f29cb…`（5 个文件；4 个 `test.jsonl` 与上游 manifest 逐个核对一致 ✅） |
+| Intern-Decision 校准 pilot | 同上仓库 `benchmarks/known-distribution-pilot-v1` | 全量 96 条（其中 2 条是 13 候选、超候选上限 10，实测覆盖 94） | 期望多类别 Brier / 期望 ECE 对精确参考分布；准确率列按「与参考 argmax 一致」计 | `54a2c97dffd972aa…`（3 个文件，与上游 manifest 一致 ✅） |
 
 ### 6.4 运行产物绑定
 
@@ -364,11 +427,19 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 | Nimble | 280 | `f0584784646c74f6…` |
 | VitaminC | 599 | `2154d495d6b8d7bd…` |
 | Kev（题级） | 5,768 | `73fd023d385cb87b…` |
+| Intern-Decision：typed_decisions | 400 行 / 2,000 决策 | `7bb7caf4aebac8d0…` |
+| Intern-Decision：toolace | 310 | `a6aae10f092815a4…` |
+| Intern-Decision：agnews | 7,600 | `8e83621e743626bb…` |
+| Intern-Decision：wildjailbreak | 2,210 | `ba4c08831294c81b…` |
+| Intern-Decision：pilot | 96（有效 94） | `6d79b66cbdb7929b…` |
+
+上表第一行 JevBench（231，`04399f09d6b39036…`）在 5.7 那次 Intern-Decision 运行中算出的 id 哈希完全相同——这是 5.7「同题」说法的机器可验证证明，也是两次运行能放进同一张表的前提。
 
 **第四节数字绑定本轮运行产物：**
 - 主体矩阵：`benchmarks/results/matrix-20261003-022427.json`（sha256 `80875133be0562ea…`，8 路由 × 4 组基准，26,184 次调用）
+- 5.7 / 5.8 对照：`benchmarks/results/intern-20261003-125308-full.json`（sha256 `7acb2dbf884846d4…`，4 路由 × 6 套件，43,388 次调用，无连接层重试）
 - 4.4 节实验（同目录）：`jevbench-20261003-093725-nobias.summary.json`、`jevbench-20261003-033600-withbias.summary.json`、`jevbench-20261003-033544-withbias2.summary.json`
-- 机器可读 provenance：`benchmarks/provenance.json`（实现指纹、数据集哈希、题集 id 哈希、运行文件 sha256）
+- 机器可读 provenance：`benchmarks/provenance.json`（实现指纹、数据集哈希、题集 id 哈希，以及上述**两次运行**的文件 sha256 与题集哈希）
 
 这些产物不随仓库提交（体积原因），统一发布于 Release [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003)；5.5 / 5.6 的跨厂商探针与附录 A 的历史产物也一并收录，便于一处核验。下载后可按上列 sha256 校验。
 
@@ -382,6 +453,8 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 | `zhihz/openjev` 的 89.8% / 97.7% | 它的评测数据未随发布包提供，只能引用其公布值。注意它**与本项目机制同构**（只读下一 token 的候选字母分布、不生成文本），是独立 Web 应用而非模型权重 |
 | 开源模型的 JevBench 分数 | 27B / 9B 权重需 GPU 与 Open-Jev loader，本机无法运行，表中为其公布值 |
 | 业界表的 Kev / Nimble / VitaminC 分数 | 来自各模型卡公布值，无法逐题复现，只能对齐子集规则后引用 |
+| Intern-Decision 三行与其 Brier / ECE | 其权重需 GPU 与 XTuner 后端，本机无法运行，只能引用公布值；这两列还叠加了各自拟合的温度，无法逐题复现 |
+| Intern-Decision 的 Hard TVD（10 条公开记录） | 本轮未计算——对照目标是它的两张结果表（七项准确率、校准 pilot），TVD 不在其中；我们报的是自己的 Brier / ECE |
 
 ---
 
