@@ -3,9 +3,13 @@
 # Jev 类模型 benchmark 调研与实测报告
 
 **被测对象**：本项目实现的决策服务（火山方舟托管 API，当前配置的 8 个底座路由）。
+
 **评测方式**：`POST /v1/systemone` 等价路径；单次前向、贪心解码（`temperature=0`）、只读生成序列位置 0、候选上限 10、不做温度校准。
+
 **数据版本**：第四节数字绑定本轮全量运行产物（8 路由 × 4 组基准，26,184 次调用，0 失败）：`benchmarks/results/matrix-20261003-022427.json`（sha256 `80875133…`）。完整哈希与边界见 6.4。
+
 上一版报告（10-02 运行，含已下线路由名 `doubao-2.0-lite`、`deepseek-v4.1-flash`、`deepseek-v4-flash`）与早期未对齐口径的初测结果已移入[附录 A](#附录-a历史产物已被第四节取代)，正文不再引用。
+
 **准确率口径**：全文均为 **hard-label argmax 准确率**（与业界口径一致），分母是**剔除连接失败后的有效题数**（本轮矩阵 0 失败，分母即题数；唯一例外是 4.4 节的 A/B 对照实验，该表分母含失败题，已在表内标注）。
 
 **目录**
@@ -131,6 +135,7 @@ Jev / vLLM 的做法是**停在答案位置做一次前向，直接读分布**�
 | deepseek-v4-pro | 78.4% | 63.1% | 81.4% | 67.1% | — | 735 ms |
 
 ¹ p50 取 JevBench 231 的中位延迟。排序按 JevBench 降序，同分按 hard 降序。Kev 列只在 3 个代表性路由上跑了全部六子集（`doubao-2.0-pro` / `doubao-2.1-lite` / `deepseek-flash`，5,768 题/路由）；该列是**六子集等权平均**，与业界 Kev 口径一致；若改用题级 pooled 口径，三者为 81.1% / 81.0% / 80.0%。
+
 ² **本表与上一版报告（10-02 运行）不可逐格对比**：两次运行之间，同路由同基准的正确数波动 ±2~7 题（贪心解码下 MoE 路由 / 批处理的非确定性；4.4 节同配置重复运行即差 7 题）。上一版里的 `doubao-2.0-lite`、`deepseek-v4.1-flash`、`deepseek-v4-flash` 已不在当前配置，其当时的数字见[附录 A](#附录-a历史产物已被第四节取代)。
 
 **分题型（JevBench 231）**：`choice` 最高 92.8%、`noul` 最高 91.9%、`score` 最高 88.9%（均在 `doubao-evolving` / `doubao-2.1-pro`）；Nimble 的 `score` 子集（54 题）最高 94.4%（`doubao-evolving`）、中位约 87%，最低 57.4%（`doubao-2.0-mini`）。
@@ -192,8 +197,11 @@ NeoHorse-Jev-4B 模型卡（TokenRhythm，2026-09-24）给出了六个基准组�
 | NeoHorse-1-4B（基线参照） | — | — | — | 69.15 | 63.27 | 82.86 | — |
 
 ¹ MASSIVE-en 是 18 类分类，超出本服务候选上限 10，改不了。
+
 ² Jev 1.13.0 的 AVG 是 AutoTrust 代跑结果，VitaminC / MASSIVE 两项缺，均值按其余组折算。
+
 ³ NeoHorse 模型卡标注：JevBench 的 **75.73 是按任务族宏平均**，同文件里给出的**逐样本准确率是 75.32**——我们的数字是逐样本准确率，应与 75.32 比较。
+
 ⁴ 我们的 AVG 是 JevBench / Kev / Nimble / VitaminC **四组均值**，缺 MASSIVE 与 OpenJev 两组，**不可与 6 组均值直接横比**。
 
 ### 5.2 同口径：JevBench 公开 231（逐样本准确率）
@@ -363,6 +371,7 @@ python3 benchmarks/make_provenance.py --run benchmarks/results/matrix-<ts>.json
 - 机器可读 provenance：`benchmarks/provenance.json`（实现指纹、数据集哈希、题集 id 哈希、运行文件 sha256）
 
 这些产物不随仓库提交（体积原因），统一发布于 Release [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003)；5.5 / 5.6 的跨厂商探针与附录 A 的历史产物也一并收录，便于一处核验。下载后可按上列 sha256 校验。
+
 **哈希随每次运行变化**——分数必须与具体哈希绑定，这正是本节存在的意义。
 
 ### 6.5 已知不可复核项（如实列出）

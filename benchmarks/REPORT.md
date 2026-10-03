@@ -3,9 +3,13 @@
 # Survey and Empirical Report on Jev-class Model Benchmarks
 
 **Subject under test**: the decision service implemented in this project (Volcengine Ark-hosted API, the 8 base-model routes currently configured).
+
 **Evaluation method**: the `POST /v1/systemone` equivalent path; a single forward pass, greedy decoding (`temperature=0`), reading only generation-sequence position 0, candidate cap 10, no temperature calibration.
+
 **Data version**: section 4 is bound to this round's full run artifact (8 routes × 4 benchmark groups, 26,184 calls, 0 failures): `benchmarks/results/matrix-20261003-022427.json` (sha256 `80875133…`). Full hashes and boundaries are in section 6.4.
+
 The previous edition of this report (the 10-02 run, including the retired route names `doubao-2.0-lite`, `deepseek-v4.1-flash`, `deepseek-v4-flash`) and the early initial results that were not protocol-aligned have been moved to [Appendix A](#appendix-a-historical-artifacts-superseded-by-section-4), and the main text no longer cites them.
+
 **Accuracy protocol**: throughout, all figures are **hard-label argmax accuracy** (consistent with the industry protocol), and the denominator is the **number of valid items after excluding connection failures** (this round's matrix had 0 failures, so the denominator is simply the item count; the only exception is the A/B comparison experiment in section 4.4, whose table denominator includes failed items and is annotated as such inside the table).
 
 **Contents**
@@ -131,6 +135,7 @@ Data source: a single full matrix, `benchmarks/results/matrix-20261003-022427.js
 | deepseek-v4-pro | 78.4% | 63.1% | 81.4% | 67.1% | — | 735 ms |
 
 ¹ p50 is the median latency over JevBench 231. Sorted by JevBench descending, ties broken by hard descending. The Kev column was only run for all six subsets on 3 representative routes (`doubao-2.0-pro` / `doubao-2.1-lite` / `deepseek-flash`, 5,768 items/route); that column is the **equal-weighted average of the six subsets**, consistent with the industry Kev protocol; under a per-item pooled protocol instead, the three would be 81.1% / 81.0% / 80.0%.
+
 ² **This table must not be compared cell by cell with the previous edition (the 10-02 run)**: between the two runs, the same route on the same benchmark moves by ±2~7 items (MoE routing / batching nondeterminism under greedy decoding; in 4.4, two runs of the same configuration differ by 7 items). The routes `doubao-2.0-lite`, `deepseek-v4.1-flash`, and `deepseek-v4-flash` from the previous edition are no longer in the current configuration; their numbers at the time are in [Appendix A](#appendix-a-historical-artifacts-superseded-by-section-4).
 
 **By question type (JevBench 231)**: `choice` peaks at 92.8%, `noul` at 91.9%, `score` at 88.9% (all in `doubao-evolving` / `doubao-2.1-pro`); the Nimble `score` subset (54 items) peaks at 94.4% (`doubao-evolving`) with a median around 87%, and bottoms out at 57.4% (`doubao-2.0-mini`).
@@ -192,8 +197,11 @@ The NeoHorse-Jev-4B model card (TokenRhythm, 2026-09-24) provides a cross-compar
 | NeoHorse-1-4B (baseline reference) | — | — | — | 69.15 | 63.27 | 82.86 | — |
 
 ¹ MASSIVE-en is an 18-class classification, which exceeds this service's candidate cap of 10 and cannot be changed.
+
 ² Jev 1.13.0's AVG is an AutoTrust run-on-behalf result, with VitaminC / MASSIVE missing; the mean is computed over the remaining groups.
+
 ³ The NeoHorse model card notes: for JevBench, **75.73 is a task-family macro average**, while the **per-sample accuracy given in the same file is 75.32** — our number is per-sample accuracy, so it should be compared with 75.32.
+
 ⁴ Our AVG is the **four-group mean of JevBench / Kev / Nimble / VitaminC**, missing the MASSIVE and OpenJev groups, and **must not be directly compared with a 6-group mean**.
 
 ### 5.2 Same protocol: JevBench public 231 (per-sample accuracy)
@@ -363,6 +371,7 @@ The fingerprint above identifies this repository's current tree. After this roun
 - Machine-readable provenance: `benchmarks/provenance.json` (implementation fingerprint, dataset hashes, item-set id hashes, run-file sha256)
 
 These artifacts are not committed to the repository (size); they are published in the [`eval-20261003`](https://github.com/yuyaxiong/LLM2Decision/releases/tag/eval-20261003) release, which also collects the section 5.5 / 5.6 cross-vendor probes and the Appendix A historical artifacts, so everything can be verified in one place. Each download can be checked against the sha256 values above.
+
 **Hashes change with every run** — scores must be bound to a specific hash, and that is precisely why this section exists.
 
 ### 6.5 Known non-reproducible items (listed honestly)
